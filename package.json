@@ -1,0 +1,26 @@
+{
+  "name": "network-analyser",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Nascomsoft Embedded Hub - Data Department. Network Analyser MVP for authorized Starlink network administrators.",
+  "workspaces": [
+    "packages/*",
+    "backend"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "dev": "npm run dev --workspace backend",
+    "db:generate": "npm run db:generate --workspace backend",
+    "db:migrate": "npm run db:migrate --workspace backend",
+    "db:studio": "npm run db:studio --workspace backend"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
