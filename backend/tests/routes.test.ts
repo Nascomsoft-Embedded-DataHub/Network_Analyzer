@@ -73,6 +73,20 @@ describe('API contract enforcement', () => {
     await fastify.close();
   });
 
+  it('reports which machine the analyser is running on', async () => {
+    const fastify = await app();
+    const response = await fastify.inject({ method: 'GET', url: '/api/system/info' });
+
+    expect(response.statusCode).toBe(200);
+    const { data } = response.json();
+    expect(data.version).toBe('0.1.0');
+    expect(data.bindPort).toBe(3000);
+    expect(data.loopbackOnly).toBe(true);
+    expect(data.runtime.nodeVersion).toMatch(/^v/);
+    expect(data.hostname).toBeTruthy();
+    await fastify.close();
+  });
+
   it('rejects an invalid device list query with the error envelope', async () => {
     const fastify = await app();
     const response = await fastify.inject({

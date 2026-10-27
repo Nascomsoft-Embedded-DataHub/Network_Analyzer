@@ -4,12 +4,18 @@ Network visibility for authorized Starlink network administrators — bandwidth 
 
 **Nascomsoft Embedded Hub — Data Department** · 7-day MVP sprint ([roadmap](docs/network-analyser-1-week-roadmap.md) · [team split](docs/network-analyser-team-split-guide.md))
 
+## How it runs
+
+The analyser runs **on the administrator's own machine** — a laptop — and the dashboard is a responsive web app used from that laptop and from an Android phone on the same network. The Starlink link is never in the data path, and telemetry never leaves the device. See [ADR 0001](docs/adr/0001-deployment-model.md).
+
+The API binds to loopback by default. Set `HOST=0.0.0.0` only when the phone needs to reach it — and note the warning about authentication in [`.env.example`](backend/.env.example).
+
 ## Repository layout
 
 ```
 packages/contracts   Shared API contracts (Zod schemas, types, mock data) — source of truth for both tracks
 backend/             Fastify API + PostgreSQL (Drizzle ORM): devices, usage, health, alerts
-docs/                Roadmap, team split guide, API contracts
+docs/                Roadmap, team split guide, API contracts, frontend spec, ADRs
 ```
 
 ## Local setup
@@ -40,5 +46,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before your first commit — branch nami
 | [1-Week MVP Build Roadmap](docs/network-analyser-1-week-roadmap.md) | Locked MVP scope, privacy directives, the 7-day sprint plan, and pilot success criteria. |
 | [Team Split Guide](docs/network-analyser-team-split-guide.md) | The 2-developer parallel sprint split, GitHub collaboration protocol, and integration checkpoints. |
 | [API Contracts](docs/api-contracts.md) | Every endpoint's JSON shape — the frontend track builds against these. |
+| [Frontend Spec](docs/frontend-spec.md) | Device model (laptop + Android phone), responsive and PWA requirements, connection states. |
+| [ADR 0001](docs/adr/0001-deployment-model.md) | Deployment model and device roles, and what they constrain for Day 2 discovery. |
 
 The original PDFs are retained at the repository root alongside the Markdown conversions.

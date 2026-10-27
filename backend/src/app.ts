@@ -6,6 +6,7 @@ import { registerErrorHandler } from './http/errors.js';
 import { registerAlertRoutes } from './routes/alerts.js';
 import { registerDeviceRoutes } from './routes/devices.js';
 import { registerHealthRoutes } from './routes/health.js';
+import { registerSystemRoutes } from './routes/system.js';
 import { registerUsageRoutes } from './routes/usage.js';
 
 export interface BuildAppOptions {
@@ -41,6 +42,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<App> {
 
   app.get('/api/health-check', async () => ({ status: 'ok' }));
 
+  await registerSystemRoutes(app, config, new Date());
   await registerDeviceRoutes(app, db);
   await registerUsageRoutes(app, db);
   await registerHealthRoutes(app, db);
