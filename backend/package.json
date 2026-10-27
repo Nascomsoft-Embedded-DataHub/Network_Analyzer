@@ -1,0 +1,34 @@
+{
+  "name": "@network-analyser/backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Network Analyser backend API — ingestion pipeline, telemetry and health tracking.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.1.0",
+    "@network-analyser/contracts": "*",
+    "drizzle-orm": "^0.45.4",
+    "fastify": "^5.12.7",
+    "pg": "^8.16.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@types/pg": "^8.15.6",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5"
+  }
+}
