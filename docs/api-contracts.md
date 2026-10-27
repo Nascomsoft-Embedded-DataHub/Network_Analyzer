@@ -277,6 +277,31 @@ Response:
 
 ---
 
+## System
+
+### `GET /api/system/info`
+
+Identifies the analyser instance. The dashboard may be open on the Android phone while the analyser runs on the laptop, so the client needs a way to confirm it is talking to the right machine.
+
+```json
+{
+  "data": {
+    "version": "0.1.0",
+    "startedAt": "2026-10-27T14:45:00.000Z",
+    "uptimeSeconds": 1802,
+    "bindHost": "127.0.0.1",
+    "bindPort": 3000,
+    "hostname": "STANLEY-LAPTOP",
+    "runtime": { "nodeVersion": "v24.19.0", "platform": "win32 x64" },
+    "loopbackOnly": true
+  }
+}
+```
+
+`loopbackOnly: false` means other devices on the network can reach the API — show that in the diagnostics panel.
+
+---
+
 ## Frontend quick start
 
 ```ts
@@ -286,3 +311,10 @@ import { MOCK_DEVICES, MOCK_USAGE, MOCK_ALERTS } from '@network-analyser/contrac
 Every fixture validates against its schema, so components built on these shapes survive the Day 5 swap to live endpoints.
 
 **Questions or a shape that doesn't work for a chart?** Raise it before building around it — contract changes are cheap today and expensive on Day 5.
+
+---
+
+## Related documents
+
+- [`frontend-spec.md`](frontend-spec.md) — the device model (laptop + Android phone), responsive and PWA requirements, and connection states.
+- [`adr/0001-deployment-model.md`](adr/0001-deployment-model.md) — why the analyser runs on the administrator's own machine, and what that constrains.

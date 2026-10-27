@@ -12,6 +12,7 @@ export * from './usage.js';
 export * from './health.js';
 export * from './alert.js';
 export * from './auth.js';
+export * from './system.js';
 export * from './mock.js';
 
 import { z } from 'zod';
@@ -42,6 +43,7 @@ import {
   AlertRuleUpsertSchema,
 } from './alert.js';
 import { LoginSchema, SessionResponseSchema } from './auth.js';
+import { SystemInfoResponseSchema } from './system.js';
 import { ErrorResponseSchema, IdSchema } from './common.js';
 
 /**
@@ -52,6 +54,13 @@ import { ErrorResponseSchema, IdSchema } from './common.js';
  * to both tracks automatically.
  */
 export const ApiRoutes = {
+  system: {
+    info: {
+      method: 'GET',
+      path: '/api/system/info',
+      response: SystemInfoResponseSchema,
+    },
+  },
   auth: {
     login: {
       method: 'POST',
