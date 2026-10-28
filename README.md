@@ -15,6 +15,7 @@ The API binds to loopback by default. Set `HOST=0.0.0.0` only when the phone nee
 ```
 packages/contracts   Shared API contracts (Zod schemas, types, mock data) — source of truth for both tracks
 backend/             Fastify API + PostgreSQL (Drizzle ORM): devices, usage, health, alerts
+frontend/            Dashboard web app (Vite + React + TypeScript) — laptop and Android phone
 docs/                Roadmap, team split guide, API contracts, frontend spec, ADRs
 ```
 
@@ -25,7 +26,7 @@ npm install                 # installs both workspaces
 docker compose up -d db     # local PostgreSQL 16
 cp backend/.env.example backend/.env
 npm run db:migrate          # apply the schema
-npm run dev                 # API on http://localhost:3000
+npm run dev                 # API on :3000 and dashboard on :5173, side by side
 ```
 
 ## Verification
