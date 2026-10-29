@@ -1,0 +1,99 @@
+@import 'tailwindcss';
+
+/*
+ * Colour tokens live as plain CSS custom properties so the light/dark switch
+ * is a single media query rather than a duplicated utility tree. Components
+ * reference the semantic tokens below (never raw colours), and Tailwind maps
+ * them into utilities through the `@theme inline` block.
+ */
+:root {
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --surface-2: #eceff3;
+  --ink: #11151b;
+  --ink-muted: #5a6472;
+  --line: #d9dee5;
+  --accent: #1d4ed8;
+  --accent-ink: #ffffff;
+  --ok: #15803d;
+  --warn: #b45309;
+  --danger: #b91c1c;
+  --info: #1d4ed8;
+  --focus: #1d4ed8;
+  --shadow: 0 1px 2px rgb(17 21 27 / 8%), 0 8px 24px rgb(17 21 27 / 6%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0e13;
+    --surface: #151a21;
+    --surface-2: #1e242d;
+    --ink: #e8ecf1;
+    --ink-muted: #9aa5b4;
+    --line: #2a323d;
+    --accent: #7aa2ff;
+    --accent-ink: #0b0e13;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --danger: #f87171;
+    --info: #7aa2ff;
+    --focus: #7aa2ff;
+    --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 8px 24px rgb(0 0 0 / 30%);
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --color-focus: var(--focus);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--ink);
+    font-family:
+      system-ui,
+      -apple-system,
+      'Segoe UI',
+      Roboto,
+      sans-serif;
+    /* The phone is the tighter constraint: never scroll sideways. */
+    overflow-x: hidden;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  /* Minimum comfortable touch target for every interactive element. */
+  button,
+  [role='button'],
+  a,
+  input,
+  select {
+    touch-action: manipulation;
+  }
+}
+
+@layer utilities {
+  .focus-ring {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+}
