@@ -9,6 +9,21 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: network_analyser
+        ports:
+          # Not 5432: the hosted runner image already runs PostgreSQL there.
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d network_analyser"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -23,5 +38,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Apply database migrations
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5433/network_analyser
+
       - name: Test
         run: npm run test
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5433/network_analyser

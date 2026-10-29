@@ -7,7 +7,10 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: network_analyser
     ports:
-      - '5432:5432'
+      # The host port is adjustable because a machine may already be running
+      # PostgreSQL on 5432. Set DB_PORT in the environment to move the
+      # published port, and point DATABASE_URL at the same port.
+      - '${DB_PORT:-5432}:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

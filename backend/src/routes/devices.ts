@@ -14,6 +14,7 @@ import { parseOrThrow } from '../http/validate.js';
 export function toDeviceContract(row: typeof devices.$inferSelect): Device {
   return {
     id: row.id,
+    identityKey: row.identityKey,
     ipAddress: row.ipAddress,
     macAddress: row.macAddress,
     hostname: row.hostname,
