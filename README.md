@@ -10,6 +10,17 @@ The analyser runs **on the administrator's own machine** — a laptop — and th
 
 The API binds to loopback by default. Set `HOST=0.0.0.0` only when the phone needs to reach it — and note the warning about authentication in [`.env.example`](backend/.env.example).
 
+## Device discovery
+
+The backend discovers attached devices from two sources at once, and merges them into one inventory:
+
+- **The host's ARP/neighbour cache** — reports true hardware addresses, but only for devices this machine has actually spoken to.
+- **The router's client roster**, read over the Starlink router's local gRPC control plane — reports every attached device with its lease state and traffic counters, but masks each MAC down to the vendor OUI.
+
+Neither is sufficient alone, so a device is identified by the strongest basis available — hardware address, then the router's own client id, then IP — and is re-anchored in place when a stronger one is learned. One device is one row, however many times the pipeline runs. See [ADR 0002](docs/adr/0002-device-identity.md).
+
+Enable the sources with `DISCOVERY_SOURCES=neighbour-cache,starlink-router`; `simulated` stands in for a router in development and tests.
+
 ## Repository layout
 
 ```
@@ -48,5 +59,6 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before your first commit — branch nami
 | [API Contracts](docs/api-contracts.md) | Every endpoint's JSON shape — the frontend track builds against these. |
 | [Frontend Spec](docs/frontend-spec.md) | Device model (laptop + Android phone), responsive and PWA requirements, connection states. |
 | [ADR 0001](docs/adr/0001-deployment-model.md) | Deployment model and device roles, and what they constrain for Day 2 discovery. |
+| [ADR 0002](docs/adr/0002-device-identity.md) | How the router's masked MAC addresses are handled, and how a device is identified across sources. |
 
 The original PDFs are retained at the repository root alongside the Markdown conversions.

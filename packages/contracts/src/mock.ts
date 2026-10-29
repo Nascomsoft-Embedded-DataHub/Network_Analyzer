@@ -24,6 +24,7 @@ export const MOCK_DEVICE_IDS = {
 export const MOCK_DEVICES: Device[] = [
   {
     id: MOCK_DEVICE_IDS.iphone,
+    identityKey: 'mac:AA:BB:CC:11:22:33',
     ipAddress: '192.168.1.21',
     macAddress: 'AA:BB:CC:11:22:33',
     hostname: 'ike-iphone',
@@ -35,6 +36,7 @@ export const MOCK_DEVICES: Device[] = [
   },
   {
     id: MOCK_DEVICE_IDS.laptop,
+    identityKey: 'mac:AA:BB:CC:44:55:66',
     ipAddress: '192.168.1.24',
     macAddress: 'AA:BB:CC:44:55:66',
     hostname: 'ike-work-laptop',
@@ -46,6 +48,7 @@ export const MOCK_DEVICES: Device[] = [
   },
   {
     id: MOCK_DEVICE_IDS.tv,
+    identityKey: 'mac:AA:BB:CC:77:88:99',
     ipAddress: '192.168.1.31',
     macAddress: 'AA:BB:CC:77:88:99',
     hostname: 'living-room-tv',
@@ -57,6 +60,7 @@ export const MOCK_DEVICES: Device[] = [
   },
   {
     id: MOCK_DEVICE_IDS.printer,
+    identityKey: 'mac:AA:BB:CC:00:11:22',
     ipAddress: '192.168.1.40',
     macAddress: 'AA:BB:CC:00:11:22',
     hostname: 'office-printer',
@@ -67,9 +71,12 @@ export const MOCK_DEVICES: Device[] = [
     lastSeenAt: '2026-10-26T22:41:00.000Z',
   },
   {
+    // A device the analyser has only ever seen by its address: no hardware
+    // address has been observed, so `macAddress` is null.
     id: MOCK_DEVICE_IDS.unknown,
+    identityKey: 'ip:192.168.1.57',
     ipAddress: '192.168.1.57',
-    macAddress: 'AA:BB:CC:33:44:55',
+    macAddress: null,
     hostname: null,
     vendor: null,
     isKnown: false,

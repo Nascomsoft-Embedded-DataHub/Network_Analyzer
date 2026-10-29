@@ -17,10 +17,13 @@
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",
+    "@grpc/grpc-js": "^1.14.6",
     "@network-analyser/contracts": "*",
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.7",
+    "oui-data": "^2.1.48",
     "pg": "^8.16.3",
+    "protobufjs": "^7.6.6",
     "zod": "^4.6.7"
   },
   "devDependencies": {

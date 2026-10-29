@@ -19,6 +19,33 @@ const EnvSchema = z.object({
   DATABASE_URL: z.url().default('postgresql://postgres:postgres@localhost:5432/network_analyser'),
   /** Comma-separated list of origins allowed to call the API. */
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  /**
+   * Discovery sources the ingestion listener draws from.
+   *
+   * - `neighbour-cache` — the host operating system's ARP/neighbour cache.
+   *   Reports true hardware addresses but only for devices this machine has
+   *   actually spoken to.
+   * - `starlink-router` — the router's own client roster, read over its local
+   *   gRPC control plane. Reports every attached device, but masks the low
+   *   three octets of each MAC down to the vendor OUI.
+   * - `simulated` — a synthetic roster for demos and tests. Never enable this
+   *   on a live network: it writes devices that do not exist.
+   */
+  DISCOVERY_SOURCES: z.string().default('neighbour-cache'),
+  /** Seconds between discovery polls. */
+  DISCOVERY_POLL_INTERVAL_SECONDS: z.coerce.number().int().min(5).max(3600).default(15),
+  /**
+   * Seconds of silence after which a device is marked offline.
+   *
+   * A device that misses one poll has usually merely changed band or slept,
+   * so the grace period keeps a flaky poll from flapping the roster between
+   * online and offline.
+   */
+  DISCOVERY_OFFLINE_AFTER_SECONDS: z.coerce.number().int().min(30).max(86400).default(180),
+  /** Address of the Starlink router on the local network. */
+  STARLINK_ROUTER_HOST: z.string().default('192.168.1.1'),
+  /** Port of the router's local gRPC control plane. */
+  STARLINK_ROUTER_PORT: z.coerce.number().int().min(1).max(65535).default(9000),
 });
 
 export type Config = z.infer<typeof EnvSchema>;
@@ -31,6 +58,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 export function corsOrigins(config: Config): string[] {
   return config.CORS_ORIGIN.split(',')
     .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
+/** Discovery sources the ingestion listener should poll, in the order given. */
+export function discoverySources(config: Config): string[] {
+  return config.DISCOVERY_SOURCES.split(',')
+    .map((source) => source.trim().toLowerCase())
     .filter(Boolean);
 }
 
