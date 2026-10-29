@@ -43,6 +43,7 @@ Query parameters: `status` (`online|offline|unknown`), `isKnown` (`true|false`),
   "data": [
     {
       "id": "11111111-1111-4111-8111-111111111111",
+      "identityKey": "mac:AA:BB:CC:11:22:33",
       "ipAddress": "192.168.1.21",
       "macAddress": "AA:BB:CC:11:22:33",
       "hostname": "ike-iphone",
@@ -58,6 +59,16 @@ Query parameters: `status` (`online|offline|unknown`), `isKnown` (`true|false`),
 ```
 
 `status: "unknown"` + `isKnown: false` is the **unknown-device** case that drives the alerts panel.
+
+**`identityKey`** says what the device is known by, as `<basis>:<value>`, and therefore how far the record can be trusted:
+
+| Basis | Meaning | `macAddress` alongside it |
+|---|---|---|
+| `mac:AA:BB:CC:DD:EE:FF` | A real hardware address — the strongest basis. | The device's own address. |
+| `cid:21` | The router's client id, for a device never seen with a hardware address. | Masked to the vendor OUI, or `null`. **Not** the device's real address — do not present it as one. |
+| `ip:192.168.1.21` | Known only by its network address. | `null`. |
+
+A device's basis is upgraded in place when a stronger one is learned, so `identityKey` changes over a device's life while `id` does not. `macAddress` is `null` whenever no hardware address is known — the dashboard must render a placeholder rather than assume a value.
 
 ### `GET /api/devices/:id`
 

@@ -20,10 +20,39 @@ export const devices = pgTable(
   'devices',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    /**
+     * Stable identity of the device within the analyser's records.
+     *
+     * Deliberately NOT the MAC address. A Starlink router masks the low three
+     * octets of every MAC it reports and keeps only the vendor OUI, so three
+     * bulbs from one vendor arrive wearing a single address. Keying the
+     * inventory on the MAC would fold those devices into one row.
+     *
+     * The key records which identifier the row is anchored to, as
+     * `<basis>:<value>`:
+     *
+     * - `mac:AA:BB:CC:DD:EE:FF` — a full hardware address, the strongest basis.
+     * - `cid:<n>` — the router's own client id, for a device seen only through
+     *   a router that masks its MACs.
+     * - `ip:<address>` — the last resort, when neither of the above is known.
+     *
+     * A row's basis is upgraded in place when a stronger one is learned, so the
+     * key never has to change to stay correct.
+     */
+    identityKey: text('identity_key').notNull(),
     /** Current IPv4 address. Changes on DHCP renewal. */
     ipAddress: text('ip_address').notNull(),
-    /** Normalised MAC address — the stable hardware identifier. */
-    macAddress: text('mac_address').notNull(),
+    /**
+     * Normalised MAC address — the stable hardware identifier.
+     *
+     * Not unique, for the reason given on `identityKey`. On a masking router
+     * this holds the vendor OUI with the remaining octets blanked, which is
+     * the most that router is willing to say.
+     *
+     * Null for a device that has never been observed with a hardware address
+     * at all, and is therefore known only by its network address.
+     */
+    macAddress: text('mac_address'),
     /** Friendly name produced by the discovery algorithm. */
     hostname: text('hostname'),
     /** OUI-derived hardware vendor. */
@@ -35,7 +64,8 @@ export const devices = pgTable(
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex('devices_mac_address_key').on(table.macAddress),
+    uniqueIndex('devices_identity_key_key').on(table.identityKey),
+    index('devices_mac_address_idx').on(table.macAddress),
     index('devices_ip_address_idx').on(table.ipAddress),
     index('devices_is_known_idx').on(table.isKnown),
   ],
