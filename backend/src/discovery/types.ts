@@ -30,6 +30,26 @@ export interface DiscoveredClient {
   macAddress: string | null;
   /** IPv4 address. `null` when the source does not report one. */
   ipAddress: string | null;
+  /**
+   * Cumulative bytes received by the client, as the source counts them.
+   *
+   * `null` when the source does not report traffic counters. The count is
+   * cumulative rather than per-interval, so consumption is the difference
+   * between two readings — never the reading itself.
+   */
+  rxBytes: number | null;
+  /**
+   * Cumulative bytes sent by the client.
+   *
+   * `null` when the source does not report traffic counters.
+   */
+  txBytes: number | null;
+  /**
+   * How long the client has been attached, in seconds.
+   *
+   * `null` when the source does not report it.
+   */
+  associatedTimeSeconds: number | null;
   /** Name the source reports, typically the DHCP hostname. */
   reportedName: string | null;
   /**
@@ -68,4 +88,33 @@ export interface DiscoverySource {
    * source means for the poll as a whole.
    */
   discover(): Promise<DiscoveredClient[]>;
+  /**
+   * Measure the health of the network, when this source can.
+   *
+   * Optional, because only some sources can see the wider network: the
+   * neighbour cache knows only what this machine has spoken to, while the
+   * router can measure the link itself.
+   *
+   * A reading that could not be taken is reported as a null field rather than
+   * as a zero, so that "no measurement" is never mistaken for "a measurement
+   * of nothing".
+   */
+  probeHealth?(): Promise<HealthReading>;
+}
+
+/**
+ * A measurement of the network's health.
+ *
+ * The throughput figures are the link's *capacity* — what it can carry, not
+ * what it is carrying right now. The two are not interchangeable: a network
+ * that is carrying nothing is perfectly healthy, and a dashboard that
+ * reported it as having no bandwidth would be wrong.
+ */
+export interface HealthReading {
+  /** Round-trip latency in milliseconds, or null when it could not be measured. */
+  latencyMs: number | null;
+  /** Capacity downstream, in megabits per second. */
+  downloadMbps: number | null;
+  /** Capacity upstream, in megabits per second. */
+  uploadMbps: number | null;
 }

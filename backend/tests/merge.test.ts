@@ -14,6 +14,10 @@ function observation(overrides: Partial<DiscoveredClient> = {}): DiscoveredClien
     routerClientId: null,
     hasDhcpLease: null,
     interfaceType: null,
+    // The neighbour cache sees frames, not traffic counters.
+    rxBytes: null,
+    txBytes: null,
+    associatedTimeSeconds: null,
     observedAt: new Date('2026-10-28T12:00:00.000Z'),
     ...overrides,
   };
@@ -28,6 +32,10 @@ const routerObservation = (overrides: Partial<DiscoveredClient> = {}): Discovere
     macIsMasked: true,
     routerClientId: 21,
     hasDhcpLease: true,
+    // The router is the source that counts traffic.
+    rxBytes: 4096,
+    txBytes: 2048,
+    associatedTimeSeconds: 120,
     ...overrides,
   });
 

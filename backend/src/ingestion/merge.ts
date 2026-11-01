@@ -31,8 +31,16 @@ export interface MergedDevice {
   reportedName: string | null;
   /** The router's client id, when the device was seen through a router. */
   routerClientId: number | null;
+  /** Cumulative bytes received by the device, when a source reports them. */
+  rxBytes: number | null;
+  /** Cumulative bytes sent by the device, when a source reports them. */
+  txBytes: number | null;
+  /** How long the device has been attached, in seconds. */
+  associatedTimeSeconds: number | null;
   /** True when the hardware address is masked to its vendor OUI. */
   macIsMasked: boolean;
+  /** When the traffic counters were read, when any were reported. */
+  observedAt: Date | null;
   /** Which sources saw the device. */
   sources: string[];
 }
@@ -76,6 +84,11 @@ interface DeviceGroup {
   ipTrust: number;
   reportedName: string | null;
   routerClientId: number | null;
+  rxBytes: number | null;
+  txBytes: number | null;
+  associatedTimeSeconds: number | null;
+  /** When the counters above were read. Travels with them. */
+  observedAt: Date | null;
   sources: Set<string>;
 }
 
@@ -113,6 +126,10 @@ export function mergeDiscoveredClients(clients: DiscoveredClient[]): MergedDevic
     ipTrust: trustFor(client.sourceName),
     reportedName: client.reportedName,
     routerClientId: client.routerClientId,
+    rxBytes: client.rxBytes,
+    txBytes: client.txBytes,
+    associatedTimeSeconds: client.associatedTimeSeconds,
+    observedAt: client.rxBytes !== null ? client.observedAt : null,
     sources: new Set([client.sourceName]),
   });
 
@@ -145,6 +162,18 @@ export function mergeDiscoveredClients(clients: DiscoveredClient[]): MergedDevic
     }
     if (client.routerClientId !== null && group.routerClientId === null) {
       group.routerClientId = client.routerClientId;
+    }
+    // Only the router counts traffic, so a group takes the counters from
+    // whichever observation carried them and keeps the later reading. The
+    // timestamp travels with the counters, because a counter says how much
+    // moved but not when.
+    if (client.rxBytes !== null) {
+      group.rxBytes = client.rxBytes;
+      group.observedAt = client.observedAt;
+    }
+    if (client.txBytes !== null) group.txBytes = client.txBytes;
+    if (client.associatedTimeSeconds !== null) {
+      group.associatedTimeSeconds = client.associatedTimeSeconds;
     }
     group.sources.add(client.sourceName);
   };
@@ -222,6 +251,10 @@ function toMergedDevice(group: DeviceGroup): MergedDevice {
     ipAddress: group.ipAddress,
     reportedName: group.reportedName,
     routerClientId: group.routerClientId,
+    rxBytes: group.rxBytes,
+    txBytes: group.txBytes,
+    associatedTimeSeconds: group.associatedTimeSeconds,
+    observedAt: group.observedAt ?? new Date(),
     macIsMasked: group.macIsMasked && group.trustedMac === null,
     sources: [...group.sources],
   };

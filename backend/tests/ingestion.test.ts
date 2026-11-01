@@ -46,6 +46,10 @@ describeWithDatabase('ingestion pipeline', () => {
       routerClientId: null,
       hasDhcpLease: null,
       interfaceType: null,
+      // The neighbour cache sees frames, not traffic counters.
+      rxBytes: null,
+      txBytes: null,
+      associatedTimeSeconds: null,
       observedAt,
       ...overrides,
     };
@@ -62,6 +66,10 @@ describeWithDatabase('ingestion pipeline', () => {
       routerClientId: 21,
       hasDhcpLease: true,
       interfaceType: null,
+      // The router is the source that counts traffic.
+      rxBytes: 4096,
+      txBytes: 2048,
+      associatedTimeSeconds: 120,
       observedAt,
       ...overrides,
     };
@@ -78,6 +86,9 @@ describeWithDatabase('ingestion pipeline', () => {
       routerClientId: null,
       hasDhcpLease: null,
       interfaceType: null,
+      rxBytes: null,
+      txBytes: null,
+      associatedTimeSeconds: null,
       observedAt,
       ...overrides,
     };
@@ -94,6 +105,9 @@ describeWithDatabase('ingestion pipeline', () => {
       routerClientId: null,
       hasDhcpLease: null,
       interfaceType: null,
+      rxBytes: null,
+      txBytes: null,
+      associatedTimeSeconds: null,
       observedAt,
       ...overrides,
     };

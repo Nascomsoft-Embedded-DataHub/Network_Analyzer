@@ -69,6 +69,11 @@ export function parseNeighbourTable(output: string, observedAt: Date = new Date(
       routerClientId: null,
       hasDhcpLease: null,
       interfaceType: null,
+      // The neighbour cache counts packets, not traffic, so it can report no
+      // traffic counters at all.
+      rxBytes: null,
+      txBytes: null,
+      associatedTimeSeconds: null,
       observedAt,
     });
   }
