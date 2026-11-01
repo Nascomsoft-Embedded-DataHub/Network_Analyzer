@@ -2,8 +2,8 @@ import { and, count, desc, eq, gte, lte } from 'drizzle-orm';
 import {
   HealthListQuerySchema,
   HealthSnapshotResponseSchema,
+  healthStatus,
   type HealthMetric,
-  type HealthSnapshot,
 } from '@network-analyser/contracts';
 import type { FastifyInstance } from 'fastify';
 import type { Database } from '../db/client.js';
@@ -71,8 +71,9 @@ export async function registerHealthRoutes(
     const latencyMs = Number(row.latencyMs);
     const downloadMbps = Number(row.downloadMbps);
 
-    const status: HealthSnapshot['status'] =
-      latencyMs > 150 || downloadMbps < 10 ? 'down' : latencyMs > 50 ? 'degraded' : 'healthy';
+    // The bands live in the shared contract, so the dashboard cannot end up
+    // showing a different verdict from the API for the same reading.
+    const status = healthStatus(latencyMs, downloadMbps);
 
     return parseOrThrow(HealthSnapshotResponseSchema, {
       data: {

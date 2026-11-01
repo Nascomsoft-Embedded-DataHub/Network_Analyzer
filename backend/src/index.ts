@@ -2,21 +2,37 @@ import { buildApp } from './app.js';
 import { corsOrigins, exposureWarning } from './config.js';
 import { IngestionListener } from './ingestion/listener.js';
 import { createDiscoverySources } from './ingestion/sources.js';
+import { BandwidthCollector } from './telemetry/collector.js';
+import { HealthSampler } from './telemetry/health.js';
+import { RetentionSweeper } from './telemetry/retention.js';
 
 async function main(): Promise<void> {
   const { app, config, db } = await buildApp();
 
+  const logger = {
+    info: (message: string) => app.log.info(message),
+    warn: (message: string) => app.log.warn(message),
+    error: (message: string, error?: unknown) => app.log.error({ err: error }, message),
+  };
+
   const sources = createDiscoverySources(config, (message) => app.log.warn(message));
+
+  const collector = new BandwidthCollector({ db, logger });
+  const sampler = new HealthSampler({ db, sources, logger });
+  const retention = new RetentionSweeper({
+    db,
+    usageRetentionDays: config.TELEMETRY_USAGE_RETENTION_DAYS,
+    healthRetentionDays: config.TELEMETRY_HEALTH_RETENTION_DAYS,
+    logger,
+  });
+
   const listener = new IngestionListener({
     db,
     sources,
     pollIntervalMs: config.DISCOVERY_POLL_INTERVAL_SECONDS * 1000,
     offlineAfterMs: config.DISCOVERY_OFFLINE_AFTER_SECONDS * 1000,
-    logger: {
-      info: (message) => app.log.info(message),
-      warn: (message) => app.log.warn(message),
-      error: (message, error) => app.log.error({ err: error }, message),
-    },
+    logger,
+    trafficSink: collector,
   });
 
   try {
@@ -38,9 +54,34 @@ async function main(): Promise<void> {
       app.log.warn('no discovery sources are enabled; the inventory will stay empty');
     }
 
+    collector.start(config.TELEMETRY_USAGE_FLUSH_INTERVAL_SECONDS * 1000);
+    app.log.info(
+      `usage rollups are written every ${config.TELEMETRY_USAGE_FLUSH_INTERVAL_SECONDS}s ` +
+        `and kept for ${config.TELEMETRY_USAGE_RETENTION_DAYS} days`,
+    );
+
+    if (sampler.sourceName) {
+      app.log.info(`health samples will be taken from: ${sampler.sourceName}`);
+      sampler.start(config.TELEMETRY_HEALTH_INTERVAL_SECONDS * 1000);
+    } else {
+      app.log.warn(
+        'no discovery source can measure network health; the health page will stay empty',
+      );
+    }
+
+    retention.start(config.TELEMETRY_RETENTION_INTERVAL_SECONDS * 1000);
+    try {
+      await retention.sweep();
+    } catch (error) {
+      logger.error('the retention sweep at startup failed', error);
+    }
+
     const shutdown = async (signal: string): Promise<void> => {
       app.log.info(`${signal} received; shutting down`);
       await listener.stop();
+      await sampler.stop();
+      await collector.stop();
+      await retention.stop();
       await app.close();
       await db.pool.end();
       process.exit(0);

@@ -9,6 +9,7 @@ import {
   SystemInfoResponseSchema,
   UsageSummaryResponseSchema,
   UsageTimelineResponseSchema,
+  healthStatus,
   type Alert,
   type AlertRule,
   type Device,
@@ -66,15 +67,10 @@ export const MOCK_SESSION = SessionResponseSchema.parse({
 /**
  * Health status bands.
  *
- * The contract pins only the `healthy` band (latency <= 50 ms and at least
- * 10 Mbps down). The `degraded` and `down` thresholds below are a frontend
- * approximation until Stanley documents the remaining bands.
+ * The bands are defined once in the shared contract, so the API and the
+ * dashboard cannot disagree about the same reading.
  */
-export function healthStatus(latencyMs: number, downloadMbps: number): 'healthy' | 'degraded' | 'down' {
-  if (latencyMs <= 50 && downloadMbps >= 10) return 'healthy';
-  if (latencyMs <= 200 && downloadMbps >= 1) return 'degraded';
-  return 'down';
-}
+export { healthStatus };
 
 const latestHealth = MOCK_HEALTH.reduce((newest, metric) =>
   Date.parse(metric.timestamp) > Date.parse(newest.timestamp) ? metric : newest,
