@@ -16,7 +16,13 @@ const EnvSchema = z.object({
    */
   HOST: z.string().default('127.0.0.1'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-  DATABASE_URL: z.url().default('postgresql://postgres:postgres@localhost:5432/network_analyser'),
+  /**
+   * PostgreSQL connection string.
+   *
+   * The default points at 5433, which is where the local development
+   * database runs — the CI runner reserves 5432 for its own PostgreSQL.
+   */
+  DATABASE_URL: z.url().default('postgresql://postgres:postgres@localhost:5433/network_analyser'),
   /** Comma-separated list of origins allowed to call the API. */
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   /**
@@ -46,6 +52,33 @@ const EnvSchema = z.object({
   STARLINK_ROUTER_HOST: z.string().default('192.168.1.1'),
   /** Port of the router's local gRPC control plane. */
   STARLINK_ROUTER_PORT: z.coerce.number().int().min(1).max(65535).default(9000),
+  /**
+   * Seconds between writes of the hourly usage buckets.
+   *
+   * The buckets themselves are hourly; this is how often the pending
+   * traffic is handed over. Shorter intervals make the current hour appear
+   * on the dashboard sooner, at the cost of more writes.
+   */
+  TELEMETRY_USAGE_FLUSH_INTERVAL_SECONDS: z.coerce.number().int().min(5).max(3600).default(300),
+  /**
+   * Seconds between health samples.
+   *
+   * Each sample asks the router to run its own speed test, which is real
+   * traffic on the link. A sample every five minutes is enough for the
+   * dashboard without spending the link on measurement.
+   */
+  TELEMETRY_HEALTH_INTERVAL_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
+  /**
+   * Days of hourly usage rollups to keep.
+   *
+   * Seven days is the window the consumption dashboards cover, and the
+   * privacy directives allow exactly that long.
+   */
+  TELEMETRY_USAGE_RETENTION_DAYS: z.coerce.number().int().min(1).max(90).default(7),
+  /** Days of health samples to keep. */
+  TELEMETRY_HEALTH_RETENTION_DAYS: z.coerce.number().int().min(1).max(90).default(7),
+  /** Seconds between retention sweeps. */
+  TELEMETRY_RETENTION_INTERVAL_SECONDS: z.coerce.number().int().min(300).max(86400).default(3600),
 });
 
 export type Config = z.infer<typeof EnvSchema>;

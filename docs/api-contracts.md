@@ -110,6 +110,14 @@ Per-device hourly consumption buckets. Query: `deviceId`, `from`, `to` (ISO time
 
 Invariant: `totalBytes === uploadBytes + downloadBytes`.
 
+The buckets are derived from the router's **cumulative** counters: a bucket
+holds the difference between two readings, never a reading. The first reading
+of a device is therefore a baseline and counts for nothing, and traffic that
+moved while the analyser was not running is spread across the hours it could
+have happened in. Buckets are kept for seven days
+(`TELEMETRY_USAGE_RETENTION_DAYS`). See
+`docs/adr/0003-telemetry-measurement.md`.
+
 ### `GET /api/usage/timeline`
 
 Network-wide totals for the **peak-usage timeline** chart. Query: `granularity` (`hour|day`, default `hour`), `from`, `to`. Defaults to the last 7 days.
@@ -193,7 +201,34 @@ Latest sample, rolled up for the status widget.
 }
 ```
 
-`status` bands: `healthy` (latency ≤ 50 ms and ≥ 10 Mbps down), `degraded`, `down`. Returns `404` before the first measurement is ingested — handle the empty state.
+`status` bands, defined once in `@network-analyser/contracts` so that this endpoint and the dashboard cannot disagree about the same reading:
+
+| band | condition |
+| --- | --- |
+| `healthy` | latency ≤ 50 ms **and** ≥ 10 Mbps down |
+| `degraded` | latency ≤ 200 ms **and** ≥ 1 Mbps down |
+| `down` | anything else |
+
+Returns `404` before the first measurement is ingested — handle the empty state.
+
+### What the health figures mean
+
+The throughput figures are the link's **capacity** — what it can carry — not
+what it is carrying. A network carrying nothing is perfectly healthy, and a
+dashboard that reported it as having no bandwidth would be wrong.
+
+- `latencyMs` — round-trip latency, from the router's ping metrics.
+- `downloadMbps` / `uploadMbps` — the capacity the router's own speed test
+  sustains.
+- `uptimeSeconds` — the analyser's own unbroken run of successful probes,
+  reset to zero whenever a probe fails. Not the router's uptime counter.
+
+A measurement that could not be taken is **not** written as a zero: a
+reading missing any of its figures is dropped, so the series can show a gap
+rather than a false reading. The sampler runs every five minutes by default
+(`TELEMETRY_HEALTH_INTERVAL_SECONDS`).
+
+The full measurement model is in `docs/adr/0003-telemetry-measurement.md`.
 
 ---
 

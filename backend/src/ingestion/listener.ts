@@ -5,7 +5,8 @@ import { devices as devicesTable } from '../db/schema.js';
 import type { DiscoverySource } from '../discovery/types.js';
 import { createVendorLookup, type VendorLookup } from '../naming/vendor.js';
 import { mergeDiscoveredClients } from './merge.js';
-import { persistDiscoveredDevices } from './upsert.js';
+import { attributeTraffic, type ObservedTraffic } from './traffic.js';
+import { persistDiscoveredDevices, type WrittenDevice } from './upsert.js';
 
 /**
  * The ingestion listener.
@@ -37,8 +38,22 @@ export interface IngestionListenerOptions {
   offlineAfterMs: number;
   vendorLookup?: VendorLookup;
   logger?: IngestionLogger;
+  /**
+   * Where the traffic counters of a poll are handed.
+   *
+   * The inventory knows which record each observation belongs to; the
+   * collector turns the counters into consumption. The two are separate
+   * concerns, so the listener only has to say where the counters went.
+   */
+  trafficSink?: TrafficSink;
   /** Overrides the clock. Used by the tests. */
   now?: () => Date;
+}
+
+/** Somewhere the traffic counters of a poll can be sent. */
+export interface TrafficSink {
+  /** Called with the counters, attributed to the records that hold them. */
+  record(traffic: ObservedTraffic[]): void | Promise<void>;
 }
 
 export interface PollOutcome {
@@ -62,6 +77,7 @@ export class IngestionListener {
   private readonly offlineAfterMs: number;
   private readonly vendorLookup: VendorLookup;
   private readonly logger: IngestionLogger;
+  private readonly trafficSink: TrafficSink | undefined;
   private readonly now: () => Date;
 
   private timer: NodeJS.Timeout | null = null;
@@ -75,6 +91,7 @@ export class IngestionListener {
     this.offlineAfterMs = options.offlineAfterMs;
     this.vendorLookup = options.vendorLookup ?? createVendorLookup();
     this.logger = options.logger ?? consoleLogger;
+    this.trafficSink = options.trafficSink;
     this.now = options.now ?? (() => new Date());
   }
 
@@ -137,6 +154,7 @@ export class IngestionListener {
       vendorLookup: this.vendorLookup,
       observedAt,
     });
+    await this.handOverTraffic(merged, written.written);
     const markedOffline = await this.markQuietDevicesOffline(observedAt);
 
     return {
@@ -148,6 +166,29 @@ export class IngestionListener {
       markedOffline,
       failures,
     };
+  }
+
+  /**
+   * Hand the counters of this poll to the collector.
+   *
+   * A collector that cannot take the traffic does not fail the poll: the
+   * inventory has already been written, and the counters will be seen again
+   * on the next one.
+   */
+  private async handOverTraffic(
+    merged: ReturnType<typeof mergeDiscoveredClients>,
+    written: WrittenDevice[],
+  ): Promise<void> {
+    if (!this.trafficSink) return;
+
+    const traffic = attributeTraffic(merged, written);
+    if (traffic.length === 0) return;
+
+    try {
+      await this.trafficSink.record(traffic);
+    } catch (error) {
+      this.logger.error('traffic handoff failed', error);
+    }
   }
 
   /**

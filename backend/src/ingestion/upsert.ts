@@ -1,4 +1,4 @@
-import { eq, or } from 'drizzle-orm';
+import { eq, or, sql } from 'drizzle-orm';
 
 import { devices as devicesTable } from '../db/schema.js';
 import type { Database } from '../db/client.js';
@@ -37,6 +37,23 @@ export interface UpsertOutcome {
   updated: number;
   /** Observations that could not be recorded, because they carried no address. */
   skipped: number;
+  /**
+   * The records written, so a caller can map an observation onto its row.
+   *
+   * The observation's key and the row's key can differ: a record anchored to
+   * a hardware address is never re-anchored back to a weaker basis.
+   */
+  written: WrittenDevice[];
+}
+
+/** A record the ingestion pipeline wrote, and the observation behind it. */
+export interface WrittenDevice {
+  /** The key of the observation this record was written from. */
+  observationKey: string;
+  /** The record's primary key. */
+  deviceId: string;
+  /** The key the record is now anchored to. */
+  identityKey: string;
 }
 
 /** The basis of a key, used to prefer the strongest record when choosing one. */
@@ -56,7 +73,7 @@ export async function persistDiscoveredDevices(
   found: MergedDevice[],
   options: UpsertOptions,
 ): Promise<UpsertOutcome> {
-  const outcome: UpsertOutcome = { inserted: 0, updated: 0, skipped: 0 };
+  const outcome: UpsertOutcome = { inserted: 0, updated: 0, skipped: 0, written: [] };
 
   for (const device of found) {
     const vendor = options.vendorLookup(device.macAddress);
@@ -78,16 +95,24 @@ export async function persistDiscoveredDevices(
         outcome.skipped += 1;
         continue;
       }
-      await db.insert(devicesTable).values({
-        identityKey: device.identityKey,
-        ipAddress: device.ipAddress ?? '0.0.0.0',
-        macAddress: device.macAddress,
-        hostname,
-        vendor,
-        status: 'online',
-        lastSeenAt: options.observedAt,
-      });
+      const inserted = await db
+        .insert(devicesTable)
+        .values({
+          identityKey: device.identityKey,
+          ipAddress: device.ipAddress ?? '0.0.0.0',
+          macAddress: device.macAddress,
+          hostname,
+          vendor,
+          status: 'online',
+          lastSeenAt: options.observedAt,
+        })
+        .returning({ id: devicesTable.id });
       outcome.inserted += 1;
+      outcome.written.push({
+        observationKey: device.identityKey,
+        deviceId: inserted[0]!.id,
+        identityKey: device.identityKey,
+      });
       continue;
     }
 
@@ -111,6 +136,17 @@ export async function persistDiscoveredDevices(
 
     await consolidateDuplicates(db, target.id, existing, device);
     outcome.updated += 1;
+    outcome.written.push({
+      observationKey: device.identityKey,
+      deviceId: target.id,
+      // The record keeps the stronger anchor it already had.
+      identityKey: isStrongerBasis(
+        identityBasis(device.identityKey),
+        identityBasis(target.identityKey),
+      )
+        ? device.identityKey
+        : target.identityKey,
+    });
   }
 
   return outcome;
@@ -192,12 +228,57 @@ async function consolidateDuplicates(
     { isKnown: keep.isKnown, firstSeenAt: keep.firstSeenAt },
   );
 
-  await db
-    .update(devicesTable)
-    .set({ isKnown: merged.isKnown, firstSeenAt: merged.firstSeenAt })
-    .where(eq(devicesTable.id, keepId));
+  // The counter baseline travels with the record. A record that has never
+  // been counted has no baseline of its own, so it inherits the most recent
+  // one available — otherwise the traffic already counted against the
+  // superseded record would be counted again against this one.
+  const counted = [keep, ...superseded].filter(
+    (row) => row.lastRxBytes !== null && row.lastTxBytes !== null,
+  );
+  const baseline = counted.reduce<(typeof devicesTable.$inferSelect) | null>((latest, row) => {
+    if (!latest) return row;
+    const latestAt = latest.lastCountersAt?.getTime() ?? 0;
+    const rowAt = row.lastCountersAt?.getTime() ?? 0;
+    return rowAt > latestAt ? row : latest;
+  }, null);
+
+  const update: Partial<typeof devicesTable.$inferInsert> = {
+    isKnown: merged.isKnown,
+    firstSeenAt: merged.firstSeenAt,
+  };
+  if (keep.lastRxBytes === null && baseline) {
+    update.lastRxBytes = baseline.lastRxBytes;
+    update.lastTxBytes = baseline.lastTxBytes;
+    update.lastCountersAt = baseline.lastCountersAt;
+  }
+
+  await db.update(devicesTable).set(update).where(eq(devicesTable.id, keepId));
 
   for (const row of superseded) {
+    // The measured history moves with the record. Deleting the row would
+    // take its usage rows with it, and those rows are the only record of
+    // the traffic the device actually moved.
+    await moveUsageTo(db, keepId, row.id);
     await db.delete(devicesTable).where(eq(devicesTable.id, row.id));
   }
+}
+
+/**
+ * Move the usage rows of one record onto another.
+ *
+ * Written as plain SQL because the move has to *add* the byte counts when
+ * both records already hold a bucket for the same hour, which the query
+ * builder cannot express.
+ */
+async function moveUsageTo(db: Database, keepId: string, fromId: string): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO usage (device_id, bucket_start, upload_bytes, download_bytes, total_bytes)
+    SELECT ${keepId}, bucket_start, upload_bytes, download_bytes, total_bytes
+    FROM usage
+    WHERE device_id = ${fromId}
+    ON CONFLICT (device_id, bucket_start) DO UPDATE SET
+      upload_bytes = usage.upload_bytes + EXCLUDED.upload_bytes,
+      download_bytes = usage.download_bytes + EXCLUDED.download_bytes,
+      total_bytes = usage.total_bytes + EXCLUDED.total_bytes
+  `);
 }

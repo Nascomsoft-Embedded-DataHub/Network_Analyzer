@@ -18,9 +18,61 @@ export const HealthMetricSchema = z.object({
   downloadMbps: z.number().nonnegative(),
   /** Measured upload throughput in Mbps. */
   uploadMbps: z.number().nonnegative(),
-  /** Connection uptime in seconds over the reporting window. */
+  /**
+   * Seconds of continuous reachability.
+   *
+   * The analyser's own streak of successful probes, reset whenever a probe
+   * fails — not the router's own uptime counter, which measures something
+   * else entirely.
+   */
   uptimeSeconds: z.number().int().nonnegative(),
 });
+
+/**
+ * The status bands a health reading falls into.
+ *
+ * Pinned here, in the shared package, because the backend's snapshot endpoint
+ * and the dashboard both need to agree: a reading the API calls `degraded`
+ * must not appear as `healthy` on screen. Both sides import
+ * {@link healthStatus} rather than repeating the thresholds.
+ *
+ * - `healthy` — the link is quick and carries real throughput.
+ * - `degraded` — the link still carries traffic, but slowly or late.
+ * - `down` — the link cannot carry usable traffic.
+ */
+export const HEALTH_BANDS = {
+  healthy: { maxLatencyMs: 50, minDownloadMbps: 10 },
+  degraded: { maxLatencyMs: 200, minDownloadMbps: 1 },
+} as const;
+
+export type HealthStatus = z.infer<typeof HealthSnapshotSchema>['status'];
+
+/**
+ * Classify a health reading into a status band.
+ *
+ * The healthy band is the one the API contract documents: latency at most
+ * 50 ms with at least 10 Mbps downstream. The degraded band is the same test
+ * relaxed to 200 ms and 1 Mbps. Anything below that is `down`.
+ *
+ * Throughput is what decides: a link with excellent latency but no capacity
+ * is not healthy, and a link with capacity but poor latency is not healthy
+ * either.
+ */
+export function healthStatus(latencyMs: number, downloadMbps: number): HealthStatus {
+  if (
+    latencyMs <= HEALTH_BANDS.healthy.maxLatencyMs &&
+    downloadMbps >= HEALTH_BANDS.healthy.minDownloadMbps
+  ) {
+    return 'healthy';
+  }
+  if (
+    latencyMs <= HEALTH_BANDS.degraded.maxLatencyMs &&
+    downloadMbps >= HEALTH_BANDS.degraded.minDownloadMbps
+  ) {
+    return 'degraded';
+  }
+  return 'down';
+}
 
 export const HealthListResponseSchema = z.object({
   data: z.array(HealthMetricSchema),
