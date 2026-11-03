@@ -15,6 +15,20 @@
       "when": 1793274494876,
       "tag": "0001_burly_lionheart",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793490350498,
+      "tag": "0002_mean_magneto",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793492805461,
+      "tag": "0003_add_counter_baseline_timestamp",
+      "breakpoints": true
     }
   ]
 }

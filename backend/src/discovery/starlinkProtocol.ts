@@ -4,10 +4,15 @@ import protobuf from 'protobufjs';
  * The slice of Starlink's router gRPC schema that the analyser reads.
  *
  * Starlink publishes no schema for its local control plane, so this file is a
- * transcription of the router's own descriptor set, reduced to the one call
- * the analyser makes. Field numbers are the contract on the wire and are
- * taken verbatim from the router: `wifi_get_clients` is 3002 on both the
- * request and the response side, and the DHCP-lease fields sit at 46 to 49.
+ * transcription of the router's own descriptor set, reduced to the calls the
+ * analyser makes. Field numbers are the contract on the wire and are taken
+ * verbatim from the router: `wifi_get_clients` is 3002 on both the request and
+ * the response side, and the DHCP-lease fields sit at 46 to 49.
+ *
+ * The router answers every request through one method and picks the branch of
+ * the response by the field number it was asked for. A call it refuses comes
+ * back as a non-zero status code rather than as a transport error, which is
+ * how a firmware that does not implement a call says so.
  *
  * Only the fields the analyser uses are declared. The wire format of an
  * undeclared field number is still passed through untouched, so a router that
@@ -25,12 +30,16 @@ service Device {
 message Request {
   oneof request {
     WifiGetClientsRequest wifi_get_clients = 3002;
+    SpeedTestRequest speed_test = 1003;
+    WifiGetPingMetricsRequest wifi_get_ping_metrics = 3007;
   }
 }
 
 message Response {
   oneof response {
     WifiGetClientsResponse wifi_get_clients = 3002;
+    SpeedTestResponse speed_test = 1003;
+    WifiGetPingMetricsResponse wifi_get_ping_metrics = 3007;
   }
   // Mirrors SpaceX.API.Status.Status on the wire: same field numbers, same
   // types. The router answers a call it refuses with a non-zero code here
@@ -41,6 +50,50 @@ message Response {
 message Status {
   int32 code = 1;
   string message = 2;
+}
+
+// ---- Speed test ----
+//
+// The router measures the link itself: it runs the transfer and reports the
+// rate it sustained, together with the latency it saw while doing so. This is
+// the only capacity measurement available without sending traffic to a third
+// party, which the analyser's privacy rules rule out.
+
+message SpeedTestRequest {}
+
+message SpeedTestResponse {
+  float download_bps = 1;
+  float upload_bps = 2;
+  float latency_s = 3;
+}
+
+// ---- Ping metrics ----
+//
+// The router's own view of how well the internet is reachable: the mean
+// round-trip time it measures, how often its probes are dropped, and how long
+// it has been since the last probe that got through.
+
+message WifiGetPingMetricsRequest {}
+
+message WifiGetPingMetricsResponse {
+  PingMetrics internet = 1;
+}
+
+message PingMetrics {
+  float latency_mean_ms = 1;
+  float latency_stddev_ms = 2;
+  float latency_mean_ms_5m = 3;
+  float latency_mean_ms_1h = 4;
+  float latency_mean_ms_1d = 5;
+  float drop_rate = 6;
+  float drop_rate_5m = 7;
+  float drop_rate_1h = 8;
+  float drop_rate_1d = 9;
+  float seconds_since_last_success = 10;
+  float seconds_since_last_1s_outage = 11;
+  float seconds_since_last_5s_outage = 12;
+  float happy_hours_1s_1d = 13;
+  float happy_hours_5s_1d = 14;
 }
 
 message WifiGetClientsRequest {}
@@ -132,6 +185,7 @@ export interface RouterClient {
   secondsUntilLeaseExpires: number;
   rxBytes: number;
   txBytes: number;
+  associatedTimeSeconds: number;
 }
 
 /** The router's answer to a client-roster request. */
@@ -191,6 +245,7 @@ export function decodeClientRosterResponse(bytes: Buffer): RouterClientRoster {
       secondsUntilLeaseExpires: Number(client.seconds_until_dhcp_lease_expires ?? 0),
       rxBytes: Number(rxStats?.bytes ?? 0),
       txBytes: Number(txStats?.bytes ?? 0),
+      associatedTimeSeconds: Number(client.associated_time_s ?? 0),
     });
   }
 
@@ -198,5 +253,140 @@ export function decodeClientRosterResponse(bytes: Buffer): RouterClientRoster {
     statusCode: Number(plain.status?.code ?? 0),
     statusMessage: String(plain.status?.message ?? ''),
     clients,
+  };
+}
+
+// ---- Speed test ----
+
+/** The router's answer to a speed-test request. */
+export interface RouterSpeedTest {
+  /** Sustained downstream rate, in bits per second. */
+  downloadBps: number;
+  /** Sustained upstream rate, in bits per second. */
+  uploadBps: number;
+  /** The latency the router saw while measuring, in seconds. */
+  latencySeconds: number;
+}
+
+/**
+ * Encode a request for the router to measure the link.
+ *
+ * The request body is empty; the branch is what selects the call.
+ */
+export function encodeSpeedTestRequest(): Buffer {
+  const { request } = starlinkMessageTypes();
+  const payload = request.encode({ speed_test: {} }).finish();
+  return Buffer.from(payload);
+}
+
+/**
+ * Decode the router's answer to a speed-test request.
+ *
+ * A router that does not implement the call answers with a status rather than
+ * with a measurement, which is reported as a null result alongside the status
+ * code so the caller can tell "refused" from "measured zero".
+ */
+export function decodeSpeedTestResponse(bytes: Buffer): {
+  statusCode: number;
+  statusMessage: string;
+  speedTest: RouterSpeedTest | null;
+} {
+  const { response } = starlinkMessageTypes();
+  const message = response.decode(bytes);
+  const plain = response.toObject(message, {
+    longs: Number,
+    enums: String,
+    bytes: Array,
+    defaults: true,
+  }) as {
+    status?: { code?: number; message?: string };
+    speed_test?: { download_bps?: number; upload_bps?: number; latency_s?: number };
+  };
+
+  const statusCode = Number(plain.status?.code ?? 0);
+  const statusMessage = String(plain.status?.message ?? '');
+  const measured = plain.speed_test;
+  if (!measured) {
+    return { statusCode, statusMessage, speedTest: null };
+  }
+
+  return {
+    statusCode,
+    statusMessage,
+    speedTest: {
+      downloadBps: Number(measured.download_bps ?? 0),
+      uploadBps: Number(measured.upload_bps ?? 0),
+      latencySeconds: Number(measured.latency_s ?? 0),
+    },
+  };
+}
+
+// ---- Ping metrics ----
+
+/** The router's own measurement of how well the internet is reachable. */
+export interface RouterPingMetrics {
+  /** Mean round-trip time, in milliseconds. */
+  latencyMeanMs: number;
+  /** The proportion of probes that were dropped, from 0 to 1. */
+  dropRate: number;
+  /** Seconds since a probe last got through. */
+  secondsSinceLastSuccess: number;
+}
+
+/**
+ * Encode a request for the router's ping metrics.
+ *
+ * The request body is empty; the branch is what selects the call.
+ */
+export function encodePingMetricsRequest(): Buffer {
+  const { request } = starlinkMessageTypes();
+  const payload = request.encode({ wifi_get_ping_metrics: {} }).finish();
+  return Buffer.from(payload);
+}
+
+/**
+ * Decode the router's answer to a ping-metrics request.
+ *
+ * As with the speed test, a router that does not implement the call answers
+ * with a status rather than with a measurement.
+ */
+export function decodePingMetricsResponse(bytes: Buffer): {
+  statusCode: number;
+  statusMessage: string;
+  metrics: RouterPingMetrics | null;
+} {
+  const { response } = starlinkMessageTypes();
+  const message = response.decode(bytes);
+  const plain = response.toObject(message, {
+    longs: Number,
+    enums: String,
+    bytes: Array,
+    defaults: true,
+  }) as {
+    status?: { code?: number; message?: string };
+    wifi_get_ping_metrics?: {
+      internet?: {
+        latency_mean_ms?: number;
+        drop_rate?: number;
+        seconds_since_last_success?: number;
+      };
+    };
+  };
+
+  const statusCode = Number(plain.status?.code ?? 0);
+  const statusMessage = String(plain.status?.message ?? '');
+  const internet = plain.wifi_get_ping_metrics?.internet;
+  if (!internet) {
+    return { statusCode, statusMessage, metrics: null };
+  }
+
+  return {
+    statusCode,
+    statusMessage,
+    metrics: {
+      latencyMeanMs: Number(internet.latency_mean_ms ?? 0),
+      dropRate: Number(internet.drop_rate ?? 0),
+      secondsSinceLastSuccess: Number(internet.seconds_since_last_success ?? 0),
+    },
   };
 }

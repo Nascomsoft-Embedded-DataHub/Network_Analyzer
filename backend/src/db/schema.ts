@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   index,
   integer,
@@ -62,6 +63,31 @@ export const devices = pgTable(
     status: text('status').$type<'online' | 'offline' | 'unknown'>().notNull().default('unknown'),
     firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * The traffic counters the router last reported for this device.
+     *
+     * The router counts bytes cumulatively since the device attached, so a
+     * consumption figure is the difference between two readings. Keeping the
+     * previous reading on the row lets the collector take that difference
+     * after a restart instead of mistaking a baseline for consumption.
+     *
+     * Null until the device has been seen with counters at least once.
+     */
+    lastRxBytes: bigint('last_rx_bytes', { mode: 'number' }),
+    /** The counter for the other direction. See `lastRxBytes`. */
+    lastTxBytes: bigint('last_tx_bytes', { mode: 'number' }),
+    /**
+     * When the counters above were read.
+     *
+     * Travels with them, because a counter says how much moved but not when.
+     * The collector uses it to place the traffic of an outage: after a
+     * restart, the bytes counted since the last reading happened somewhere
+     * between this moment and the next one, and this timestamp is what
+     * narrows that down.
+     *
+     * Written by the telemetry collector alone, like the counters themselves.
+     */
+    lastCountersAt: timestamp('last_counters_at', { withTimezone: true }),
   },
   (table) => [
     uniqueIndex('devices_identity_key_key').on(table.identityKey),
@@ -77,6 +103,10 @@ export const devices = pgTable(
  * PRIVACY: Byte counts only — never traffic content. Granular flow data is
  * dropped after 24 hours; these rollups are retained for 7 days to feed the
  * consumption dashboards.
+ *
+ * The byte columns are 64-bit. A busy device moves tens of gigabytes a week,
+ * and a 32-bit column tops out at 2 GiB — a single busy afternoon would
+ * overflow it.
  */
 export const usage = pgTable(
   'usage',
@@ -87,14 +117,19 @@ export const usage = pgTable(
       .references(() => devices.id, { onDelete: 'cascade' }),
     /** Start of the hourly aggregation bucket. */
     bucketStart: timestamp('bucket_start', { withTimezone: true }).notNull(),
-    uploadBytes: integer('upload_bytes').notNull().default(0),
-    downloadBytes: integer('download_bytes').notNull().default(0),
-    totalBytes: integer('total_bytes').notNull().default(0),
+    uploadBytes: bigint('upload_bytes', { mode: 'number' }).notNull().default(0),
+    downloadBytes: bigint('download_bytes', { mode: 'number' }).notNull().default(0),
+    totalBytes: bigint('total_bytes', { mode: 'number' }).notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex('usage_device_bucket_key').on(table.deviceId, table.bucketStart),
-    index('usage_bucket_start_idx').on(table.bucketStart),
+    // The table is append-mostly and physically ordered by the hour the rows
+    // describe, which is exactly the shape a block range index is good at.
+    // It is a fraction of the size of the equivalent B-tree and prunes the
+    // same range scans, which is what the retention sweep and the timeline
+    // query both do.
+    index('usage_bucket_start_brin_idx').using('brin', table.bucketStart),
   ],
 );
 
@@ -117,7 +152,10 @@ export const health = pgTable(
   },
   (table) => [
     index('health_device_id_idx').on(table.deviceId),
-    index('health_measured_at_idx').on(table.measuredAt),
+    // Samples are appended in the order they were taken, so the physical
+    // order of the table follows `measuredAt` and a block range index prunes
+    // the range scans for a lot less space than a B-tree.
+    index('health_measured_at_brin_idx').using('brin', table.measuredAt),
   ],
 );
 
@@ -132,8 +170,10 @@ export const alerts = pgTable(
     severity: text('severity').$type<'info' | 'warning' | 'critical'>().notNull(),
     message: text('message').notNull(),
     deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'set null' }),
-    thresholdBytes: integer('threshold_bytes'),
-    observedBytes: integer('observed_bytes'),
+    // 64-bit, because a usage threshold is expressed in gigabytes and a
+    // 32-bit column cannot hold 4 GiB.
+    thresholdBytes: bigint('threshold_bytes', { mode: 'number' }),
+    observedBytes: bigint('observed_bytes', { mode: 'number' }),
     triggeredAt: timestamp('triggered_at', { withTimezone: true }).notNull().defaultNow(),
     acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
   },
@@ -152,7 +192,8 @@ export const alertRules = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     type: text('type').$type<'unknown_device' | 'high_usage'>().notNull(),
     enabled: boolean('enabled').notNull().default(true),
-    thresholdBytes: integer('threshold_bytes'),
+    /** The usage that trips this rule, in bytes. 64-bit — see `alerts`. */
+    thresholdBytes: bigint('threshold_bytes', { mode: 'number' }),
     severity: text('severity').$type<'info' | 'warning' | 'critical'>().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

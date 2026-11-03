@@ -1,7 +1,13 @@
 import { normalizeMac } from './address.js';
 import {
   decodeClientRosterResponse,
+  decodePingMetricsResponse,
+  decodeSpeedTestResponse,
   encodeClientRosterRequest,
+  encodePingMetricsRequest,
+  encodeSpeedTestRequest,
+  type RouterPingMetrics,
+  type RouterSpeedTest,
 } from './starlinkProtocol.js';
 import {
   createGrpcTransport,
@@ -9,7 +15,7 @@ import {
   type StarlinkCall,
   type StarlinkTransportKind,
 } from './starlinkTransport.js';
-import type { DiscoveredClient, DiscoverySource } from './types.js';
+import type { DiscoveredClient, DiscoverySource, HealthReading } from './types.js';
 
 /**
  * Discovery from a Starlink router's own client roster.
@@ -63,6 +69,8 @@ export interface StarlinkRouterOptions {
   timeoutMs?: number;
   /** Overrides the transport. Used by the tests to stand in for a router. */
   call?: StarlinkCall;
+  /** Where warnings go. Defaults to the console. */
+  warn?: (message: string) => void;
 }
 
 export class StarlinkRouterSource implements DiscoverySource {
@@ -71,11 +79,13 @@ export class StarlinkRouterSource implements DiscoverySource {
 
   private readonly call: StarlinkCall;
   private readonly close: () => void;
+  private readonly logger: { warn: (message: string) => void };
 
   constructor(options: StarlinkRouterOptions = {}) {
     const host = options.host ?? '192.168.1.1';
     const port = options.port ?? 9000;
     const timeoutMs = options.timeoutMs ?? 5_000;
+    this.logger = { warn: options.warn ?? ((message: string) => console.warn(message)) };
 
     if (options.call) {
       this.call = options.call;
@@ -135,11 +145,91 @@ export class StarlinkRouterSource implements DiscoverySource {
         routerClientId: client.clientId > 0 ? client.clientId : null,
         hasDhcpLease: client.dhcpLeaseFound ? client.dhcpLeaseActive : null,
         interfaceType: describeInterface(client.interfaceType),
+        rxBytes: client.rxBytes,
+        txBytes: client.txBytes,
+        associatedTimeSeconds: client.associatedTimeSeconds,
         observedAt,
       });
     }
 
     return clients;
+  }
+
+  /**
+   * Measure the health of the network the router serves.
+   *
+   * Two calls, each independent of the other:
+   *
+   * - **The speed test.** The router measures its own link and reports the
+   *   rate it sustained. This is the capacity figure — what the link can
+   *   carry — and it is the only such measurement available without sending
+   *   traffic to a third party.
+   * - **The ping metrics.** The router's own view of how well the internet is
+   *   reachable, which is a steadier latency figure than the one the speed
+   *   test reports in passing.
+   *
+   * A call the router refuses is reported as a missing measurement rather than
+   * as a failure, because a firmware that lacks a call is still a router that
+   * works. A reading with a field left null means "not measured", never "zero".
+   */
+  async probeHealth(): Promise<HealthReading> {
+    const speedTest = await this.measureSpeedTest();
+    const ping = await this.measurePingMetrics();
+
+    const latencyMs =
+      ping?.latencyMeanMs && ping.latencyMeanMs > 0
+        ? ping.latencyMeanMs
+        : speedTest && speedTest.latencySeconds > 0
+          ? speedTest.latencySeconds * 1000
+          : null;
+
+    return {
+      latencyMs,
+      downloadMbps: speedTest ? speedTest.downloadBps / 1_000_000 : null,
+      uploadMbps: speedTest ? speedTest.uploadBps / 1_000_000 : null,
+    };
+  }
+
+  /** The router's own speed test, or null when it will not run one. */
+  private async measureSpeedTest(): Promise<RouterSpeedTest | null> {
+    try {
+      const responseBytes = await this.call(encodeSpeedTestRequest());
+      const decoded = decodeSpeedTestResponse(responseBytes);
+      if (decoded.statusCode !== 0) {
+        this.logger.warn(
+          `router refused the speed-test request (status ${decoded.statusCode}` +
+            `${decoded.statusMessage ? `: ${decoded.statusMessage}` : ''})`,
+        );
+        return null;
+      }
+      return decoded.speedTest;
+    } catch (error) {
+      this.logger.warn(
+        `router speed test failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
+  }
+
+  /** The router's ping metrics, or null when it will not report them. */
+  private async measurePingMetrics(): Promise<RouterPingMetrics | null> {
+    try {
+      const responseBytes = await this.call(encodePingMetricsRequest());
+      const decoded = decodePingMetricsResponse(responseBytes);
+      if (decoded.statusCode !== 0) {
+        this.logger.warn(
+          `router refused the ping-metrics request (status ${decoded.statusCode}` +
+            `${decoded.statusMessage ? `: ${decoded.statusMessage}` : ''})`,
+        );
+        return null;
+      }
+      return decoded.metrics;
+    } catch (error) {
+      this.logger.warn(
+        `router ping metrics failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
   }
 
   /** Releases the transport. The listener calls this on shutdown. */
