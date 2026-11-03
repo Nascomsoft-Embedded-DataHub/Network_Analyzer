@@ -1,6 +1,15 @@
-import { EmptyState } from '@/components/ui';
 import { PageHeader } from '@/components/features/PageHeader';
+import { HealthSnapshotPanel } from '@/components/features/HealthSnapshotPanel';
+import { NetworkNowPanel } from '@/components/features/NetworkNowPanel';
+import { PeakUsagePanel } from '@/components/features/PeakUsagePanel';
+import { RecentAlertsPanel } from '@/components/features/RecentAlertsPanel';
 
+/**
+ * The dashboard shell.
+ *
+ * Every panel owns its own four states, so one failing request never blanks
+ * the others, and no panel shows a figure it has not actually been given.
+ */
 export function DashboardPage() {
   return (
     <>
@@ -8,10 +17,12 @@ export function DashboardPage() {
         title="Dashboard"
         description="Network-wide bandwidth consumption and the peak-usage timeline."
       />
-      <EmptyState
-        title="The dashboard is not built yet"
-        description="The consumption overview, the peak-usage timeline and the top-consumption list arrive with the dashboard shell on Day 2 and the charts on Day 3. Nothing is shown here rather than showing invented figures."
-      />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <NetworkNowPanel />
+        <PeakUsagePanel />
+        <HealthSnapshotPanel />
+        <RecentAlertsPanel />
+      </div>
     </>
   );
 }

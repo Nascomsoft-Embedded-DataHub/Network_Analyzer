@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 export type IconButtonVariant = 'secondary' | 'ghost' | 'danger';
@@ -17,16 +17,13 @@ const VARIANTS: Record<IconButtonVariant, string> = {
 };
 
 /** Square 44px minimum touch target — the icon sits inside it. */
-export function IconButton({
-  label,
-  icon,
-  variant = 'ghost',
-  className,
-  type = 'button',
-  ...rest
-}: IconButtonProps) {
+export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
+  { label, icon, variant = 'ghost', className, type = 'button', ...rest },
+  ref,
+) {
   return (
     <button
+      ref={ref}
       type={type}
       aria-label={label}
       title={label}
@@ -41,4 +38,4 @@ export function IconButton({
       {icon}
     </button>
   );
-}
+});
