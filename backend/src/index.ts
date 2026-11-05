@@ -7,7 +7,7 @@ import { HealthSampler } from './telemetry/health.js';
 import { RetentionSweeper } from './telemetry/retention.js';
 
 async function main(): Promise<void> {
-  const { app, config, db } = await buildApp();
+  const { app, config, db, sessions } = await buildApp();
 
   const logger = {
     info: (message: string) => app.log.info(message),
@@ -43,6 +43,14 @@ async function main(): Promise<void> {
     const warning = exposureWarning(config);
     if (warning) {
       app.log.warn(warning);
+    }
+
+    if (!sessions.isConfigured()) {
+      app.log.warn(
+        'no administrator password is configured, so nobody can sign in; ' +
+          'set ANALYSER_ADMIN_PASSWORD and restart the analyser to let a signed-in ' +
+          'client read the inventory',
+      );
     }
 
     if (sources.length > 0) {
