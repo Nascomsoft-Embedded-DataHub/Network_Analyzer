@@ -1,10 +1,12 @@
-# Network Analyser — API Contracts (Day 1)
+# Network Analyser — API Contracts
 
 **Audience:** Frontend track (Glory). Build every screen against these shapes with mock data until the endpoints go live.
 
 **Source of truth:** `packages/contracts/src/` (Zod schemas). This document is derived from those schemas — if they disagree, the code wins and this file needs updating. The backend validates every request and response against the same schemas at runtime, so a shape change shows up as a `400` rather than silent drift.
 
 **Mock data:** ready-made fixtures that validate against these schemas live in `packages/contracts/src/mock.ts` — import them directly, or copy the payloads below.
+
+**Updated for Day 4:** the session endpoints are live, and every endpoint except the sign-in, the liveness probe and the analyser-identity endpoint now requires a session token. See [ADR 0004](adr/0004-sessions-and-access-control.md) for why the session works this way.
 
 ---
 
@@ -25,10 +27,32 @@
 }
 ```
 
-Error codes: `VALIDATION_ERROR` (400), `NOT_FOUND` (404), `INTERNAL_ERROR` (500).
+Error codes: `VALIDATION_ERROR` (400), `UNAUTHORIZED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404), `INTERNAL_ERROR` (500), `AUTH_NOT_CONFIGURED` (503).
 
 - MAC addresses are **uppercase, colon-delimited**: `AA:BB:CC:11:22:33`
 - Byte counts are integers (not humanised strings) — format on the client.
+
+### Authentication
+
+**Every endpoint requires a session token except `POST /api/auth/login`, `GET /api/health-check` and `GET /api/system/info`.** A request without one is refused with `401 UNAUTHORIZED` before any handler runs, so an unauthenticated caller makes the analyser do no work at all.
+
+The three public endpoints are the ones a client needs before it has a token: the sign-in itself, a liveness probe, and the analyser's own identity — which the sign-in screen needs to confirm it is pointed at the right machine before anybody has signed in. None of them reveals anything about the devices on the network.
+
+Send the token as a bearer credential on every call:
+
+```
+Authorization: Bearer <token>
+```
+
+Three endpoints additionally require an **administrator** session and answer `403 FORBIDDEN` for a viewer:
+
+| Endpoint | Who may call it |
+|---|---|
+| `PATCH /api/devices/:id/known` | admin |
+| `PATCH /api/alerts/:id/acknowledge` | admin |
+| `PUT /api/alerts/rules` | admin |
+
+A viewer may read every other endpoint in this document.
 
 ---
 
@@ -295,9 +319,11 @@ Upserts a rule by `type`. Body:
 
 ---
 
-## Auth (Day 4)
+## Auth
 
 ### `POST /api/auth/login`
+
+The only public endpoint besides `GET /api/health-check` and `GET /api/system/info`.
 
 ```json
 { "email": "admin@example.com", "password": "at-least-8-chars" }
@@ -314,12 +340,30 @@ Response:
       "email": "admin@example.com",
       "role": "admin"
     },
+    "token": "v1.eyJ2IjoxLCJzdWIiOiJlMDAwMDAwMC0wMDAwLTAwMDQtODExMS0xMTExMTExMTExMTEifQ.9Nq…",
     "expiresAt": "2026-10-28T09:15:00.000Z"
   }
 }
 ```
 
-`role` is `admin | viewer` — the RBAC UI gates on this. Day 1 ships a hard-coded admin session shape; token issuance lands later.
+`role` is `admin | viewer` — the RBAC UI gates on this. `token` is the bearer credential to send on every later call.
+
+Failures:
+
+| Status | Code | When |
+|---|---|---|
+| `401` | `INVALID_CREDENTIALS` | The address and password do not match an account. The same reply is given for an unknown address, so the endpoint cannot be used to discover which addresses exist. |
+| `503` | `AUTH_NOT_CONFIGURED` | No administrator password is configured on this analyser. Set `ANALYSER_ADMIN_PASSWORD` and restart it. |
+
+The `503` is worth distinguishing from a rejected password: "your password is wrong" and "nobody has set one up yet" are very different problems for whoever is reading the message.
+
+### `GET /api/auth/session`
+
+Requires a session token. Renews the session the client already holds and returns the current identity — so a dashboard left open on a phone stays signed in without the administrator signing in again.
+
+The response shape is identical to the login response: `{ data: { user, token, expiresAt } }`, with a **fresh** token and a fresh expiry.
+
+A token that is malformed, forged or expired is refused with `401 UNAUTHORIZED`, and the client should treat that as "sign in again" rather than as an error to display. Renewal only applies to a token that is still valid — an expired session cannot be renewed, only replaced by signing in again.
 
 ---
 

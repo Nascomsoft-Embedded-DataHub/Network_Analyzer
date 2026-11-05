@@ -21,6 +21,16 @@ Neither is sufficient alone, so a device is identified by the strongest basis av
 
 Enable the sources with `DISCOVERY_SOURCES=neighbour-cache,starlink-router`; `simulated` stands in for a router in development and tests.
 
+## Access control
+
+The device inventory and the traffic figures are behind a sign-in. Accounts live in the analyser's
+own configuration rather than in a users table, and a session is a signed token the analyser
+verifies without keeping any session state — so restarting the analyser does not sign anybody
+out. Every endpoint requires a token except the sign-in, the liveness probe and the
+analyser-identity endpoint, and the endpoints that change something require an administrator:
+a viewer may read every figure and change nothing. See
+[ADR 0004](docs/adr/0004-sessions-and-access-control.md).
+
 ## Repository layout
 
 ```
@@ -61,5 +71,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before your first commit — branch nami
 | [Frontend Spec](docs/frontend-spec.md) | Device model (laptop + Android phone), responsive and PWA requirements, connection states. |
 | [ADR 0001](docs/adr/0001-deployment-model.md) | Deployment model and device roles, and what they constrain for Day 2 discovery. |
 | [ADR 0002](docs/adr/0002-device-identity.md) | How the router's masked MAC addresses are handled, and how a device is identified across sources. |
+| [ADR 0003](docs/adr/0003-telemetry-measurement.md) | What the telemetry measures — consumption as a difference, health as capacity, and why a missing reading is a gap rather than a zero. |
+| [ADR 0004](docs/adr/0004-sessions-and-access-control.md) | How the sign-in works, where the accounts live, and which side enforces the admin/viewer rule. |
 
 The original PDFs are retained at the repository root alongside the Markdown conversions.

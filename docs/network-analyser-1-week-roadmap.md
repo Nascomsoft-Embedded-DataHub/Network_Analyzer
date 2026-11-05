@@ -59,6 +59,8 @@ The daily cadence shifts from research to rapid build. Each day focuses on a dis
 
 **Expected Outcome:** A functional, authenticated web interface where administrators can view live and historical bandwidth consumption charts, alongside an accurate device list.
 
+**Delivered.** The API issues signed session tokens and refuses anything without one: every endpoint needs a token except the sign-in, the liveness probe and the analyser-identity endpoint, and the endpoints that change something need an administrator. The sign-in, the admin/viewer split and the token lifecycle are recorded in [ADR 0004](adr/0004-sessions-and-access-control.md); the API shapes are in [`api-contracts.md`](api-contracts.md).
+
 ### Day 5: Alerts & Export Reporting
 
 **Activities:** Configure logic triggers for unknown-device detection and high-usage thresholds. Build the report generation engine to export daily and weekly consumption into manager-friendly CSV/PDF formats.
