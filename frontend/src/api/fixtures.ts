@@ -51,7 +51,7 @@ export const MOCK_SYSTEM_INFO = SystemInfoResponseSchema.parse({
   },
 });
 
-/** Stands in for an authenticated session. The backend has no auth route yet. */
+/** Stands in for an authenticated session; the token is what the client sends back on every later call. */
 export const MOCK_SESSION = SessionResponseSchema.parse({
   data: {
     user: {
@@ -60,6 +60,7 @@ export const MOCK_SESSION = SessionResponseSchema.parse({
       email: 'admin@example.test',
       role: 'admin',
     },
+    token: 'mock-session-token',
     expiresAt: '2026-10-28T00:00:00.000Z',
   },
 });
