@@ -10,14 +10,20 @@ export const VERSION = '0.1.0';
  * Reports which machine the analyser is running on.
  *
  * The dashboard may be open on a different device than the analyser, so it
- * needs a way to confirm it is talking to the right instance.
+ * needs a way to confirm it is talking to the right instance. That check
+ * happens before anybody signs in — the address can be wrong, and the sign-in
+ * screen is where the address is corrected — so this route is public.
+ *
+ * What it reveals is deliberately thin: the hostname, the runtime and how the
+ * analyser is bound. Nothing about the devices on the network, which is what
+ * the session guards.
  */
 export async function registerSystemRoutes(
   app: FastifyInstance,
   config: Config,
   startedAt: Date,
 ): Promise<void> {
-  app.get('/api/system/info', async () => {
+  app.get('/api/system/info', { config: { public: true } }, async () => {
     return SystemInfoResponseSchema.parse({
       data: {
         version: VERSION,

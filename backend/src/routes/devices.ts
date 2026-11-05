@@ -6,6 +6,7 @@ import {
   type Device,
 } from '@network-analyser/contracts';
 import type { FastifyInstance } from 'fastify';
+import { requireAdmin } from '../auth/guard.js';
 import type { Database } from '../db/client.js';
 import { devices } from '../db/schema.js';
 import { parseOrThrow } from '../http/validate.js';
@@ -81,23 +82,30 @@ export async function registerDeviceRoutes(
     return { data: toDeviceContract(row) };
   });
 
-  app.patch('/api/devices/:id/known', async (request) => {
-    const { id } = request.params as { id: string };
-    const body = parseOrThrow(MarkDeviceKnownSchema, request.body);
+  // Marking a device as known says "this one belongs here". That judgement
+  // belongs to the administrator, and it is what stops the unknown-device
+  // alert from firing again for a device everyone has already accepted.
+  app.patch(
+    '/api/devices/:id/known',
+    { preHandler: requireAdmin },
+    async (request) => {
+      const { id } = request.params as { id: string };
+      const body = parseOrThrow(MarkDeviceKnownSchema, request.body);
 
-    const existing = await db.select().from(devices).where(eq(devices.id, id)).limit(1);
-    if (!existing[0]) {
-      const error = new Error('Device not found');
-      Object.assign(error, { statusCode: 404 });
-      throw error;
-    }
+      const existing = await db.select().from(devices).where(eq(devices.id, id)).limit(1);
+      if (!existing[0]) {
+        const error = new Error('Device not found');
+        Object.assign(error, { statusCode: 404 });
+        throw error;
+      }
 
-    const [updated] = await db
-      .update(devices)
-      .set({ isKnown: body.isKnown })
-      .where(eq(devices.id, id))
-      .returning();
+      const [updated] = await db
+        .update(devices)
+        .set({ isKnown: body.isKnown })
+        .where(eq(devices.id, id))
+        .returning();
 
-    return parseOrThrow(DeviceResponseSchema, { data: toDeviceContract(updated!) });
-  });
+      return parseOrThrow(DeviceResponseSchema, { data: toDeviceContract(updated!) });
+    },
+  );
 }
