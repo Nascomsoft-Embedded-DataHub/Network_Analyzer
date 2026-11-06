@@ -1,4 +1,5 @@
 import { buildApp } from './app.js';
+import { AlertTriggerEngine } from './alerts/triggers.js';
 import { corsOrigins, exposureWarning } from './config.js';
 import { IngestionListener } from './ingestion/listener.js';
 import { createDiscoverySources } from './ingestion/sources.js';
@@ -34,6 +35,8 @@ async function main(): Promise<void> {
     logger,
     trafficSink: collector,
   });
+
+  const triggers = new AlertTriggerEngine({ db, logger });
 
   try {
     await app.listen({ host: config.HOST, port: config.PORT });
@@ -84,12 +87,16 @@ async function main(): Promise<void> {
       logger.error('the retention sweep at startup failed', error);
     }
 
+    triggers.start(config.ALERT_TRIGGER_INTERVAL_SECONDS * 1000);
+    app.log.info(`alert rules are evaluated every ${config.ALERT_TRIGGER_INTERVAL_SECONDS}s`);
+
     const shutdown = async (signal: string): Promise<void> => {
       app.log.info(`${signal} received; shutting down`);
       await listener.stop();
       await sampler.stop();
       await collector.stop();
       await retention.stop();
+      await triggers.stop();
       await app.close();
       await db.pool.end();
       process.exit(0);

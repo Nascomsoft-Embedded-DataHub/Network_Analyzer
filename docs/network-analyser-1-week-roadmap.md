@@ -67,6 +67,8 @@ The daily cadence shifts from research to rapid build. Each day focuses on a dis
 
 **Expected Outcome:** Automated UI/email alerts successfully fire upon new device connections, and administrators can instantly download formatted usage reports for review.
 
+**Delivered.** The alert rules now fire on their own: a background engine reads the rules, raises an `unknown_device` alert once per device and a `high_usage` alert once per device per day, and the endpoints that were already in place list and acknowledge what it wrote. `GET /api/reports/consumption` answers with a daily or weekly consumption report as a CSV file, built from the same hourly rollups the dashboard reads. The trigger rules, the report format, and the two things deliberately left out — PDF and email — are recorded in [ADR 0006](adr/0006-alert-triggers-and-consumption-reports.md); the endpoint is in [`api-contracts.md`](api-contracts.md).
+
 ### Day 6: Privacy Hardening & QA
 
 **Activities:** Audit the entire codebase against the established privacy principles. Conduct end-to-end testing to verify data accuracy, ensure encrypted traffic remains untouched, and patch any critical bugs.
