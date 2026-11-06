@@ -96,6 +96,15 @@ const EnvSchema = z.object({
   /** Seconds between retention sweeps. */
   TELEMETRY_RETENTION_INTERVAL_SECONDS: z.coerce.number().int().min(300).max(86400).default(3600),
   /**
+   * Seconds between alert trigger evaluations.
+   *
+   * The trigger engine reads the rules and raises an alert for anything that
+   * has crossed them. A minute is often enough: the usage counters are only
+   * handed over every few minutes anyway, so a faster pass would look at
+   * almost the same numbers.
+   */
+  ALERT_TRIGGER_INTERVAL_SECONDS: z.coerce.number().int().min(5).max(3600).default(60),
+  /**
    * Address of the administrator account.
    *
    * The analyser keeps its accounts in configuration rather than in a user
