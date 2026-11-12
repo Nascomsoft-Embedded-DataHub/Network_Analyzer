@@ -8,6 +8,8 @@
 
 **Updated for Day 4:** the session endpoints are live, and every endpoint except the sign-in, the liveness probe and the analyser-identity endpoint now requires a session token. See [ADR 0004](adr/0004-sessions-and-access-control.md) for why the session works this way.
 
+**Updated for Day 5:** alerts are now raised by a background engine rather than by anything the dashboard does, and there is a new endpoint that returns a consumption report as a CSV file. See [ADR 0006](adr/0006-alert-triggers-and-consumption-reports.md) for both.
+
 ---
 
 ## Conventions
@@ -317,6 +319,65 @@ Upserts a rule by `type`. Body:
 }
 ```
 
+### How alerts are raised
+
+Alerts are raised by a **background engine**, not by anything the dashboard does. It reads the rules above, compares the network against them, and writes to the `alerts` table; the endpoints on this page only read and acknowledge what it wrote. An alert therefore appears whether or not anybody is looking at the dashboard.
+
+- **`unknown_device`** fires once per device — the first time the engine sees a device that is not marked as known. It does not fire again for that device, however many times the engine runs: the administrator has already been told about it.
+- **`high_usage`** fires once per device per UTC day, when the device's consumption *so far that day* passes the rule's `thresholdBytes`. A rule with no threshold cannot fire.
+
+The figures on a `high_usage` alert are the same ones the dashboard reads: the hourly usage buckets that fall on the current day. The last few minutes are missing until the counters are handed over, and a day on which the analyser was not running produces no alert at all.
+
+---
+
+## Reports
+
+### `GET /api/reports/consumption`
+
+Answers with a **CSV file**, not a JSON envelope: the person asking for it wants a spreadsheet they can send to somebody else.
+
+Because it is a file download it has **no entry in the `ApiRoutes` registry** and no response schema — fetch it directly and read the body as text. The query is still a shared contract (`ReportQuerySchema` in `packages/contracts/src/report.ts`), so both sides agree on the window and the granularity.
+
+Query:
+
+| Parameter | Meaning |
+|---|---|
+| `period` | `daily` or `weekly`. Defaults to `daily`. |
+| `from` | Start of the window, inclusive. ISO-8601. |
+| `to` | End of the window, inclusive. ISO-8601. Defaults to now. |
+| `deviceId` | Restrict the report to one device. |
+
+- `daily` buckets by **UTC calendar day**; `weekly` buckets by **ISO week, starting Monday**.
+- `from` and `to` bound the *start* of each bucket, so `to` is the last bucket to be included rather than the last instant covered.
+- Left out, the window is the **retention window** — everything still on record — up to now.
+- The window is bounded by what the analyser still keeps: the hourly rollups are pruned after `TELEMETRY_USAGE_RETENTION_DAYS` days (7 by default), so a weekly report can cover at most one week.
+
+Response headers:
+
+| Header | Value |
+|---|---|
+| `Content-Type` | `text/csv; charset=utf-8` |
+| `Content-Disposition` | `attachment; filename="network-analyser-consumption-daily-2026-11-04-to-2026-11-05.csv"` |
+| `X-Report-Period` | `daily` or `weekly` |
+| `X-Report-From` / `X-Report-To` | the window the file actually covers |
+
+The file has one row per period per device, and one row per period for the network as a whole:
+
+```
+scope,period_start,period_end,device,ip_address,upload_bytes,upload_human,download_bytes,download_human,total_bytes,total_human
+network,2026-11-04T00:00:00.000Z,2026-11-05T00:00:00.000Z,,,1000,1000 B,3000,2.93 KiB,4000,3.91 KiB
+device,2026-11-04T00:00:00.000Z,2026-11-05T00:00:00.000Z,hall-lamp,192.168.1.22,750,750 B,2250,2.20 KiB,3000,2.93 KiB
+```
+
+- `scope` is `network` for the total of the period and `device` for a single device. The network row comes first, then the devices in order of what they used.
+- `period_end` is **exclusive**: the period runs from `period_start` up to but not including `period_end`.
+- The byte columns are the exact counts; the `*_human` columns are the same numbers written the way a person reads them.
+- The device row leaves `device` and `ip_address` empty when the analyser no longer knows that device. The traffic is still counted in the network total.
+
+Any session may call this endpoint, administrator or viewer: a report holds the same figures the dashboard already shows.
+
+**For the dashboard:** a plain link or an `<a download>` cannot send the `Authorization` header, so the file has to be fetched with the session token and turned into a blob. `callApi` parses its response as JSON, so this endpoint needs its own fetch.
+
 ---
 
 ## Auth
@@ -408,3 +469,4 @@ Every fixture validates against its schema, so components built on these shapes 
 
 - [`frontend-spec.md`](frontend-spec.md) — the device model (laptop + Android phone), responsive and PWA requirements, and connection states.
 - [`adr/0001-deployment-model.md`](adr/0001-deployment-model.md) — why the analyser runs on the administrator's own machine, and what that constrains.
+- [`adr/0006-alert-triggers-and-consumption-reports.md`](adr/0006-alert-triggers-and-consumption-reports.md) — how the alert rules fire, and what a consumption report is and is not.

@@ -10,6 +10,7 @@ import { registerAlertRoutes } from './routes/alerts.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerDeviceRoutes } from './routes/devices.js';
 import { registerHealthRoutes } from './routes/health.js';
+import { registerReportRoutes } from './routes/reports.js';
 import { registerSystemRoutes } from './routes/system.js';
 import { registerUsageRoutes } from './routes/usage.js';
 
@@ -81,6 +82,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<App> {
   await registerHealthRoutes(app, db);
   await registerAlertRoutes(app, db);
   await registerAlertRuleRoutes(app, db);
+  await registerReportRoutes(app, db, config);
 
   return { app, db, config, sessions };
 }

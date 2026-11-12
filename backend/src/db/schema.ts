@@ -180,6 +180,10 @@ export const alerts = pgTable(
   (table) => [
     index('alerts_triggered_at_idx').on(table.triggeredAt),
     index('alerts_acknowledged_at_idx').on(table.acknowledgedAt),
+    // The trigger engine asks "has this device already been reported?" on
+    // every pass, for both kinds of rule, so the pair it searches by is
+    // indexed rather than left to a scan of the whole table.
+    index('alerts_device_id_type_idx').on(table.deviceId, table.type),
   ],
 );
 

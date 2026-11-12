@@ -1,0 +1,1 @@
+CREATE INDEX "alerts_device_id_type_idx" ON "alerts" USING btree ("device_id","type");

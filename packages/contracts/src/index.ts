@@ -11,6 +11,7 @@ export * from './device.js';
 export * from './usage.js';
 export * from './health.js';
 export * from './alert.js';
+export * from './report.js';
 export * from './auth.js';
 export * from './system.js';
 export * from './mock.js';
