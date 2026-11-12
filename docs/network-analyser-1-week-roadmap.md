@@ -59,11 +59,15 @@ The daily cadence shifts from research to rapid build. Each day focuses on a dis
 
 **Expected Outcome:** A functional, authenticated web interface where administrators can view live and historical bandwidth consumption charts, alongside an accurate device list.
 
+**Delivered.** The API issues signed session tokens and refuses anything without one: every endpoint needs a token except the sign-in, the liveness probe and the analyser-identity endpoint, and the endpoints that change something need an administrator. The sign-in, the admin/viewer split and the token lifecycle are recorded in [ADR 0004](adr/0004-sessions-and-access-control.md); the API shapes are in [`api-contracts.md`](api-contracts.md).
+
 ### Day 5: Alerts & Export Reporting
 
 **Activities:** Configure logic triggers for unknown-device detection and high-usage thresholds. Build the report generation engine to export daily and weekly consumption into manager-friendly CSV/PDF formats.
 
 **Expected Outcome:** Automated UI/email alerts successfully fire upon new device connections, and administrators can instantly download formatted usage reports for review.
+
+**Delivered.** The alert rules now fire on their own: a background engine reads the rules, raises an `unknown_device` alert once per device and a `high_usage` alert once per device per day, and the endpoints that were already in place list and acknowledge what it wrote. `GET /api/reports/consumption` answers with a daily or weekly consumption report as a CSV file, built from the same hourly rollups the dashboard reads. The trigger rules, the report format, and the two things deliberately left out — PDF and email — are recorded in [ADR 0006](adr/0006-alert-triggers-and-consumption-reports.md); the endpoint is in [`api-contracts.md`](api-contracts.md).
 
 ### Day 6: Privacy Hardening & QA
 

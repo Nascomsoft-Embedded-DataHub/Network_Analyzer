@@ -29,6 +29,20 @@
       "when": 1793492805461,
       "tag": "0003_add_counter_baseline_timestamp",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793741110355,
+      "tag": "0004_seed_alert_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793971622896,
+      "tag": "0005_alert_trigger_indexes",
+      "breakpoints": true
     }
   ]
 }

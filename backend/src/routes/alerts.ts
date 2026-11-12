@@ -6,6 +6,7 @@ import {
   type Alert,
 } from '@network-analyser/contracts';
 import type { FastifyInstance } from 'fastify';
+import { requireAdmin } from '../auth/guard.js';
 import type { Database } from '../db/client.js';
 import { alerts } from '../db/schema.js';
 import { parseOrThrow } from '../http/validate.js';
@@ -52,34 +53,40 @@ export async function registerAlertRoutes(
     };
   });
 
-  app.patch('/api/alerts/:id/acknowledge', async (request) => {
-    const { id } = request.params as { id: string };
-    parseOrThrow(AcknowledgeAlertSchema, request.body);
+  // Acknowledging an alert is a statement that somebody has seen it and dealt
+  // with it, so it is an administrator's to make.
+  app.patch(
+    '/api/alerts/:id/acknowledge',
+    { preHandler: requireAdmin },
+    async (request) => {
+      const { id } = request.params as { id: string };
+      parseOrThrow(AcknowledgeAlertSchema, request.body);
 
-    const [updated] = await db
-      .update(alerts)
-      .set({ acknowledgedAt: new Date() })
-      .where(eq(alerts.id, id))
-      .returning();
+      const [updated] = await db
+        .update(alerts)
+        .set({ acknowledgedAt: new Date() })
+        .where(eq(alerts.id, id))
+        .returning();
 
-    if (!updated) {
-      const error = new Error('Alert not found');
-      Object.assign(error, { statusCode: 404 });
-      throw error;
-    }
+      if (!updated) {
+        const error = new Error('Alert not found');
+        Object.assign(error, { statusCode: 404 });
+        throw error;
+      }
 
-    return parseOrThrow(AlertResponseSchema, {
-      data: {
-        id: updated.id,
-        type: updated.type,
-        severity: updated.severity,
-        message: updated.message,
-        deviceId: updated.deviceId,
-        thresholdBytes: updated.thresholdBytes,
-        observedBytes: updated.observedBytes,
-        triggeredAt: updated.triggeredAt.toISOString(),
-        acknowledgedAt: updated.acknowledgedAt?.toISOString() ?? null,
-      },
-    });
-  });
+      return parseOrThrow(AlertResponseSchema, {
+        data: {
+          id: updated.id,
+          type: updated.type,
+          severity: updated.severity,
+          message: updated.message,
+          deviceId: updated.deviceId,
+          thresholdBytes: updated.thresholdBytes,
+          observedBytes: updated.observedBytes,
+          triggeredAt: updated.triggeredAt.toISOString(),
+          acknowledgedAt: updated.acknowledgedAt?.toISOString() ?? null,
+        },
+      });
+    },
+  );
 }

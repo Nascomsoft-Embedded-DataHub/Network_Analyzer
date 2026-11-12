@@ -1,4 +1,5 @@
 import { buildApp } from './app.js';
+import { AlertTriggerEngine } from './alerts/triggers.js';
 import { corsOrigins, exposureWarning } from './config.js';
 import { IngestionListener } from './ingestion/listener.js';
 import { createDiscoverySources } from './ingestion/sources.js';
@@ -7,7 +8,7 @@ import { HealthSampler } from './telemetry/health.js';
 import { RetentionSweeper } from './telemetry/retention.js';
 
 async function main(): Promise<void> {
-  const { app, config, db } = await buildApp();
+  const { app, config, db, sessions } = await buildApp();
 
   const logger = {
     info: (message: string) => app.log.info(message),
@@ -35,6 +36,8 @@ async function main(): Promise<void> {
     trafficSink: collector,
   });
 
+  const triggers = new AlertTriggerEngine({ db, logger });
+
   try {
     await app.listen({ host: config.HOST, port: config.PORT });
     app.log.info(`Network Analyser API listening on ${config.HOST}:${config.PORT}`);
@@ -43,6 +46,14 @@ async function main(): Promise<void> {
     const warning = exposureWarning(config);
     if (warning) {
       app.log.warn(warning);
+    }
+
+    if (!sessions.isConfigured()) {
+      app.log.warn(
+        'no administrator password is configured, so nobody can sign in; ' +
+          'set ANALYSER_ADMIN_PASSWORD and restart the analyser to let a signed-in ' +
+          'client read the inventory',
+      );
     }
 
     if (sources.length > 0) {
@@ -76,12 +87,16 @@ async function main(): Promise<void> {
       logger.error('the retention sweep at startup failed', error);
     }
 
+    triggers.start(config.ALERT_TRIGGER_INTERVAL_SECONDS * 1000);
+    app.log.info(`alert rules are evaluated every ${config.ALERT_TRIGGER_INTERVAL_SECONDS}s`);
+
     const shutdown = async (signal: string): Promise<void> => {
       app.log.info(`${signal} received; shutting down`);
       await listener.stop();
       await sampler.stop();
       await collector.stop();
       await retention.stop();
+      await triggers.stop();
       await app.close();
       await db.pool.end();
       process.exit(0);

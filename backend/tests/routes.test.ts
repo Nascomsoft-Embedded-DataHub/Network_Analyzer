@@ -11,9 +11,15 @@ import { MOCK_DEVICES } from '@network-analyser/contracts';
  * verify the HTTP envelope (status codes, validation errors, response
  * shapes) against the shared contracts — the SQL itself is exercised by
  * integration runs against a live database.
+ *
+ * Every request carries a session token, because the guard refuses anything
+ * without one. The public surface — the sign-in endpoint, the liveness probe
+ * and the unmatched-route 404 — is covered in `auth.test.ts`.
  */
 
 const DEVICE_UUID = MOCK_DEVICES[0]!.id;
+const ADMIN_PASSWORD = 'correct-horse-battery';
+const SECRET = 'test-secret-value-long-enough';
 
 /**
  * Drizzle's query builder is a thenable, so the stub must be one too —
@@ -59,14 +65,30 @@ describe('API contract enforcement', () => {
 
   async function app() {
     const built = await buildApp({
-      config: loadConfig({ NODE_ENV: 'test' }),
+      config: loadConfig({
+        NODE_ENV: 'test',
+        ANALYSER_ADMIN_EMAIL: 'admin@analyser.local',
+        ANALYSER_ADMIN_PASSWORD: ADMIN_PASSWORD,
+        ANALYSER_VIEWER_EMAIL: 'viewer@analyser.local',
+        ANALYSER_VIEWER_PASSWORD: 'viewer-password',
+      }),
       db,
+      sessionSecret: SECRET,
     });
-    return built.app;
+
+    // A token for the administrator, so the guard lets the request through.
+    const session = built.sessions.issue({
+      id: 'a1000000-0000-4000-8000-000000000001',
+      name: 'Administrator',
+      email: 'admin@analyser.local',
+      role: 'admin',
+    });
+
+    return { fastify: built.app, token: session.token };
   }
 
   it('serves the health-check endpoint', async () => {
-    const fastify = await app();
+    const { fastify } = await app();
     const response = await fastify.inject({ method: 'GET', url: '/api/health-check' });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ status: 'ok' });
@@ -74,8 +96,12 @@ describe('API contract enforcement', () => {
   });
 
   it('reports which machine the analyser is running on', async () => {
-    const fastify = await app();
-    const response = await fastify.inject({ method: 'GET', url: '/api/system/info' });
+    const { fastify, token } = await app();
+    const response = await fastify.inject({
+      method: 'GET',
+      url: '/api/system/info',
+      headers: { authorization: `Bearer ${token}` },
+    });
 
     expect(response.statusCode).toBe(200);
     const { data } = response.json();
@@ -88,10 +114,11 @@ describe('API contract enforcement', () => {
   });
 
   it('rejects an invalid device list query with the error envelope', async () => {
-    const fastify = await app();
+    const { fastify, token } = await app();
     const response = await fastify.inject({
       method: 'GET',
       url: '/api/devices?limit=not-a-number',
+      headers: { authorization: `Bearer ${token}` },
     });
 
     expect(response.statusCode).toBe(400);
@@ -104,10 +131,11 @@ describe('API contract enforcement', () => {
   });
 
   it('rejects an unknown status filter value', async () => {
-    const fastify = await app();
+    const { fastify, token } = await app();
     const response = await fastify.inject({
       method: 'GET',
       url: '/api/devices?status=compromised',
+      headers: { authorization: `Bearer ${token}` },
     });
 
     expect(response.statusCode).toBe(400);
@@ -116,10 +144,11 @@ describe('API contract enforcement', () => {
   });
 
   it('accepts a valid device list query', async () => {
-    const fastify = await app();
+    const { fastify, token } = await app();
     const response = await fastify.inject({
       method: 'GET',
       url: '/api/devices?status=online&limit=10&offset=0',
+      headers: { authorization: `Bearer ${token}` },
     });
 
     expect(response.statusCode).toBe(200);
@@ -128,21 +157,23 @@ describe('API contract enforcement', () => {
   });
 
   it('coerces the isKnown string flag to a boolean', async () => {
-    const fastify = await app();
+    const { fastify, token } = await app();
     const response = await fastify.inject({
       method: 'GET',
       url: '/api/devices?isKnown=true',
+      headers: { authorization: `Bearer ${token}` },
     });
     expect(response.statusCode).toBe(200);
     await fastify.close();
   });
 
   it('rejects a MAC address in the wrong format via the device contract', async () => {
-    const fastify = await app();
+    const { fastify, token } = await app();
     // markKnown rejects the body before any database access
     const response = await fastify.inject({
       method: 'PATCH',
       url: `/api/devices/${DEVICE_UUID}/known`,
+      headers: { authorization: `Bearer ${token}` },
       payload: { isKnown: 'yes-please' },
     });
 
@@ -152,7 +183,7 @@ describe('API contract enforcement', () => {
   });
 
   it('returns 404 envelope shape for unknown routes', async () => {
-    const fastify = await app();
+    const { fastify } = await app();
     const response = await fastify.inject({ method: 'GET', url: '/api/does-not-exist' });
     expect(response.statusCode).toBe(404);
     const body = response.json();

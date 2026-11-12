@@ -1,6 +1,22 @@
 import { z } from 'zod';
 
 /**
+ * An optional string variable.
+ *
+ * An environment file that says `ANALYSER_ADMIN_PASSWORD=` means "no
+ * password", not "a password of zero characters" — so an empty value is
+ * treated as an absent one rather than failing the minimum-length check.
+ */
+const optionalString = (min: number) =>
+  z
+    .string()
+    .optional()
+    .transform((value) => (value === undefined || value === '' ? undefined : value))
+    .refine((value) => value === undefined || value.length >= min, {
+      message: `Must be at least ${min} characters.`,
+    });
+
+/**
  * Runtime configuration, validated at boot so a missing or malformed
  * variable fails fast rather than surfacing as a confusing runtime error.
  */
@@ -10,9 +26,9 @@ const EnvSchema = z.object({
    * Interface the API binds to.
    *
    * Defaults to loopback. The analyser runs on the administrator's own
-   * machine, so binding the LAN interface is an explicit opt-in — and it is
-   * only safe once authentication is in place, because the device inventory
-   * is sensitive. See `docs/adr/0001-deployment-model.md`.
+   * machine, so binding the LAN interface is an explicit opt-in — it is what
+   * lets a phone on the same network reach the dashboard, and sessions are
+   * what make that safe. See `docs/adr/0001-deployment-model.md`.
    */
   HOST: z.string().default('127.0.0.1'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
@@ -79,6 +95,45 @@ const EnvSchema = z.object({
   TELEMETRY_HEALTH_RETENTION_DAYS: z.coerce.number().int().min(1).max(90).default(7),
   /** Seconds between retention sweeps. */
   TELEMETRY_RETENTION_INTERVAL_SECONDS: z.coerce.number().int().min(300).max(86400).default(3600),
+  /**
+   * Seconds between alert trigger evaluations.
+   *
+   * The trigger engine reads the rules and raises an alert for anything that
+   * has crossed them. A minute is often enough: the usage counters are only
+   * handed over every few minutes anyway, so a faster pass would look at
+   * almost the same numbers.
+   */
+  ALERT_TRIGGER_INTERVAL_SECONDS: z.coerce.number().int().min(5).max(3600).default(60),
+  /**
+   * Address of the administrator account.
+   *
+   * The analyser keeps its accounts in configuration rather than in a user
+   * table: there is one administrator and, optionally, one read-only viewer.
+   */
+  ANALYSER_ADMIN_EMAIL: z.email().default('admin@analyser.local'),
+  /**
+   * Password of the administrator account.
+   *
+   * Without it the analyser still runs and still serves the sign-in screen,
+   * but nobody can sign in — the dashboard says so rather than rejecting
+   * every attempt as though the password were wrong.
+   */
+  ANALYSER_ADMIN_PASSWORD: optionalString(8),
+  /** Address of the optional read-only account. */
+  ANALYSER_VIEWER_EMAIL: z.email().optional(),
+  /** Password of the optional read-only account. */
+  ANALYSER_VIEWER_PASSWORD: optionalString(8),
+  /**
+   * Secret used to sign session tokens.
+   *
+   * Without it a random one is generated at boot, which signs sessions that
+   * stop working when the analyser restarts. That is the safe direction to
+   * fail, but a stable secret means a phone keeps its session across a
+   * restart, which is what an administrator actually wants.
+   */
+  ANALYSER_SESSION_SECRET: optionalString(16),
+  /** How long a session lasts, in hours. */
+  ANALYSER_SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(720).default(12),
 });
 
 export type Config = z.infer<typeof EnvSchema>;
@@ -116,16 +171,20 @@ export function isLoopback(host: string): boolean {
 /**
  * Warning to surface when the API is exposed beyond the local machine.
  *
- * Session authentication lands in a later sprint phase. Until then, exposing
- * the API on the LAN means any device on the network can enumerate every
- * device attached to it.
+ * Sessions now protect the device inventory, so binding to the LAN is a
+ * supported way to run the analyser: the phone on the same network signs in
+ * like any other client. What remains is worth saying out loud, because
+ * "authentication" is not the same as "private" — every device on the
+ * network can still reach the sign-in screen and try to authenticate against
+ * it.
  */
 export function exposureWarning(config: Config): string | null {
   if (isLoopback(config.HOST)) return null;
   return (
     `API is bound to ${config.HOST} and is reachable by other devices on this network. ` +
-    `Session authentication is not implemented yet, so anyone on the network can read the ` +
-    `device inventory and usage history. Keep the analyser on a trusted network until ` +
-    `authentication lands.`
+    `Session authentication protects the device inventory, so only a signed-in administrator ` +
+    `or viewer can read it — but every device on the network can still reach the sign-in ` +
+    `screen and attempt to authenticate. Keep the administrator password strong, and keep the ` +
+    `analyser on a network you trust.`
   );
 }
